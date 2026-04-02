@@ -91,8 +91,9 @@ public class HybridStrategyExecutor {
 
         candles.sort((c1, c2) -> c1.getTimestamp().compareTo(c2.getTimestamp()));
 
+        // BigDecimal을 Double로 변환
         List<Double> closePrices = candles.stream()
-                .map(Candle::getClosePrice)
+                .map(c -> c.getClosePrice() != null ? c.getClosePrice().doubleValue() : 0.0)
                 .toList();
 
         double ema12 = TechnicalIndicatorCalculator.calculateEMA(closePrices, 12);
@@ -108,12 +109,14 @@ public class HybridStrategyExecutor {
 
         double rsi = TechnicalIndicatorCalculator.calculateRSI(closePrices, 14);
 
+        // BigDecimal을 Double로 변환
         List<Double> volumes = candles.stream()
-                .map(Candle::getVolume)
+                .map(c -> c.getVolume() != null ? c.getVolume().doubleValue() : 0.0)
                 .toList();
 
         double volumeMA20 = TechnicalIndicatorCalculator.calculateVolumeMA(volumes, 20);
-        double currentVolume = candles.get(candles.size() - 1).getVolume();
+        double currentVolume = candles.get(candles.size() - 1).getVolume() != null 
+                ? candles.get(candles.size() - 1).getVolume().doubleValue() : 0.0;
         double volumeRatio = volumeMA20 > 0 ? currentVolume / volumeMA20 : 0;
 
         HybridSignalAnalyzer.TrendSignal trend = signalAnalyzer.analyzeTrend(ema12, ema26, sma50);
@@ -128,10 +131,10 @@ public class HybridStrategyExecutor {
 
         Candle latest = candles.get(candles.size() - 1);
         HybridSignalAnalyzer.CandleSignal candleSignal = signalAnalyzer.analyzeCandlePattern(
-                latest.getOpenPrice(),
-                latest.getHighPrice(),
-                latest.getLowPrice(),
-                latest.getClosePrice()
+                latest.getOpenPrice() != null ? latest.getOpenPrice().doubleValue() : 0.0,
+                latest.getHighPrice() != null ? latest.getHighPrice().doubleValue() : 0.0,
+                latest.getLowPrice() != null ? latest.getLowPrice().doubleValue() : 0.0,
+                latest.getClosePrice() != null ? latest.getClosePrice().doubleValue() : 0.0
         );
 
         HybridSignalAnalyzer.TradeSignal tradeSignal = signalAnalyzer.generateTradeSignal(

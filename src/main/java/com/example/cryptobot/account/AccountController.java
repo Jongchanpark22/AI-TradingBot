@@ -1,5 +1,6 @@
 package com.example.cryptobot.account;
 
+import com.example.cryptobot.account.dto.AccountResponse;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
@@ -18,25 +19,29 @@ public class AccountController {
     private final AccountService accountService;
 
     @GetMapping("/{accountId}")
-    public ResponseEntity<Account> getAccount(@PathVariable Long accountId) {
+    public ResponseEntity<AccountResponse> getAccount(@PathVariable Long accountId) {
         Account account = accountService.getAccount(accountId);
-        return ResponseEntity.ok(account);
+        return ResponseEntity.ok(AccountResponse.from(account));
     }
 
     @GetMapping("/user/{userId}")
-    public ResponseEntity<List<Account>> getAccountsByUserId(@PathVariable Long userId) {
-        List<Account> accounts = accountService.getAccountsByUserId(userId);
+    public ResponseEntity<List<AccountResponse>> getAccountsByUserId(@PathVariable Long userId) {
+        List<AccountResponse> accounts = accountService.getAccountsByUserId(userId)
+                .stream()
+                .map(AccountResponse::from)
+                .toList();
+
         return ResponseEntity.ok(accounts);
     }
 
     @PostMapping
-    public ResponseEntity<Account> createAccount(@RequestBody CreateAccountRequest request) {
+    public ResponseEntity<AccountResponse> createAccount(@RequestBody CreateAccountRequest request) {
         Account account = accountService.createAccount(
                 request.getUserId(),
                 request.getApiKey(),
                 request.getSecretKey()
         );
-        return ResponseEntity.ok(account);
+        return ResponseEntity.ok(AccountResponse.from(account));
     }
 
     @PutMapping("/{accountId}/activate")

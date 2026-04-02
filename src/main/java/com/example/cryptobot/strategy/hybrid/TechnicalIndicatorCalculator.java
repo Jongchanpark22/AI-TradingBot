@@ -145,8 +145,15 @@ public class TechnicalIndicatorCalculator {
 
         double obv = 0;
         for (Candle candle : candles) {
-            if (candle.getClosePrice() > candle.getOpenPrice()) obv += candle.getVolume();
-            else if (candle.getClosePrice() < candle.getOpenPrice()) obv -= candle.getVolume();
+            if (candle.getClosePrice() == null || candle.getOpenPrice() == null) {
+                continue;
+            }
+
+            int comparison = candle.getClosePrice().compareTo(candle.getOpenPrice());
+            double volume = candle.getVolume() != null ? candle.getVolume().doubleValue() : 0;
+
+            if (comparison > 0) obv += volume;
+            else if (comparison < 0) obv -= volume;
         }
         return obv;
     }
@@ -181,13 +188,25 @@ public class TechnicalIndicatorCalculator {
             return null;
         }
 
-        double resistance = Double.MIN_VALUE;
-        double support = Double.MAX_VALUE;
+        double resistance = Double.NEGATIVE_INFINITY;
+        double support = Double.POSITIVE_INFINITY;
 
         for (int i = candles.size() - lookback; i < candles.size(); i++) {
             Candle candle = candles.get(i);
-            resistance = Math.max(resistance, candle.getHighPrice());
-            support = Math.min(support, candle.getLowPrice());
+
+            if (candle.getHighPrice() == null || candle.getLowPrice() == null) {
+                continue;
+            }
+
+            double high = candle.getHighPrice().doubleValue();
+            double low = candle.getLowPrice().doubleValue();
+
+            resistance = Math.max(resistance, high);
+            support = Math.min(support, low);
+        }
+
+        if (Double.isInfinite(resistance) || Double.isInfinite(support)) {
+            return null;
         }
 
         return SupportResistance.builder()
@@ -197,6 +216,9 @@ public class TechnicalIndicatorCalculator {
     }
 
     public static double calculatePriceDistanceFromSupport(double currentPrice, double support, double resistance) {
+        if (Double.isInfinite(support) || Double.isInfinite(resistance)) return 0;
+        if (Double.isNaN(support) || Double.isNaN(resistance)) return 0;
+
         double midpoint = (support + resistance) / 2;
         double range = resistance - support;
         if (range == 0) return 0;

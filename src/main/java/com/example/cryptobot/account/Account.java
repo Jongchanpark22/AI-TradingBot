@@ -1,6 +1,7 @@
 package com.example.cryptobot.account;
 
 import com.example.cryptobot.common.entity.BaseEntity;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -25,9 +26,11 @@ public class Account extends BaseEntity {
     @JoinColumn(name = "user_id")
     private User user;
 
+    @JsonIgnore
     @Column(nullable = false)
     private String apiKey;
 
+    @JsonIgnore
     @Column(nullable = false)
     private String secretKey;
 

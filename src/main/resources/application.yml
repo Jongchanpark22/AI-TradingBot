@@ -26,6 +26,20 @@ spring:
       host: localhost
       port: 6379
       timeout: 2000ms
+      # Redis 캐시 설정
+      cache:
+        type: redis
+        redis:
+          time-to-live: 10m  # 기본 TTL: 10분
+
+# 업비트 API 설정
+upbit:
+  api:
+    base-url: https://api.upbit.com
+    timeout-ms: 10000
+    # API 키는 환경변수에서 읽음
+    access-key: ${UPBIT_ACCESS_KEY}
+    secret-key: ${UPBIT_SECRET_KEY}
 
 server:
   port: 8080
@@ -49,4 +63,3 @@ management:
     health:
         probes:
             enabled: true
-
