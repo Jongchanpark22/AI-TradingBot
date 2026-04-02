@@ -6,6 +6,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.List;
 
 @Service
@@ -25,11 +27,11 @@ public class PositionService {
         Position position = Position.builder()
                 .account(new com.example.cryptobot.account.Account())
                 .symbol(symbol)
-                .quantity(0.0)
-                .avgBuyPrice(0.0)
-                .currentPrice(0.0)
-                .unrealizedProfit(0.0)
-                .unrealizedProfitRate(0.0)
+                .quantity(BigDecimal.ZERO)
+                .avgBuyPrice(BigDecimal.ZERO)
+                .currentPrice(BigDecimal.ZERO)
+                .unrealizedProfit(BigDecimal.ZERO)
+                .unrealizedProfitRate(BigDecimal.ZERO)
                 .status(Position.PositionStatus.CLOSED)
                 .build();
         position.getAccount().setId(accountId);
@@ -44,7 +46,7 @@ public class PositionService {
         return positionRepository.findByAccountIdAndStatus(accountId, Position.PositionStatus.OPEN);
     }
 
-    public void updatePosition(Long positionId, Double quantity, Double avgPrice, Double currentPrice) {
+    public void updatePosition(Long positionId, BigDecimal quantity, BigDecimal avgPrice, BigDecimal currentPrice) {
         Position position = positionRepository.findById(positionId)
                 .orElseThrow(() -> new BusinessException("POSITION_NOT_FOUND", "포지션을 찾을 수 없습니다."));
         
@@ -53,12 +55,14 @@ public class PositionService {
         position.setCurrentPrice(currentPrice);
         
         // 미실현 손익 계산
-        Double unrealizedProfit = (currentPrice - avgPrice) * quantity;
-        Double unrealizedProfitRate = avgPrice > 0 ? (unrealizedProfit / (avgPrice * quantity)) * 100 : 0;
+        BigDecimal unrealizedProfit = currentPrice.subtract(avgPrice).multiply(quantity);
+        BigDecimal unrealizedProfitRate = avgPrice.compareTo(BigDecimal.ZERO) > 0
+                ? unrealizedProfit.divide(avgPrice.multiply(quantity), 4, RoundingMode.HALF_UP).multiply(new BigDecimal("100"))
+                : BigDecimal.ZERO;
         
         position.setUnrealizedProfit(unrealizedProfit);
         position.setUnrealizedProfitRate(unrealizedProfitRate);
-        position.setStatus(quantity > 0 ? Position.PositionStatus.OPEN : Position.PositionStatus.CLOSED);
+        position.setStatus(quantity.compareTo(BigDecimal.ZERO) > 0 ? Position.PositionStatus.OPEN : Position.PositionStatus.CLOSED);
         
         positionRepository.save(position);
         log.info("Position updated: positionId={}, quantity={}, avgPrice={}", positionId, quantity, avgPrice);

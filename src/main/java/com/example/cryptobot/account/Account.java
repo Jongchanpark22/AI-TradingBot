@@ -4,9 +4,11 @@ import com.example.cryptobot.common.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.math.BigDecimal;
+
 @Entity
 @Table(name = "accounts", uniqueConstraints = {
-    @UniqueConstraint(columnNames = {"user_id", "exchange_type"})
+        @UniqueConstraint(columnNames = {"user_id"})
 })
 @Getter
 @Setter
@@ -23,10 +25,6 @@ public class Account extends BaseEntity {
     @JoinColumn(name = "user_id")
     private User user;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private ExchangeType exchangeType;
-
     @Column(nullable = false)
     private String apiKey;
 
@@ -36,18 +34,12 @@ public class Account extends BaseEntity {
     @Column(nullable = false)
     private Boolean isActive;
 
-    @Column(columnDefinition = "DECIMAL(19,2) DEFAULT 0")
-    private Double totalBalance;
+    @Column(precision = 19, scale = 2)
+    private BigDecimal totalBalance;
 
-    @Column(columnDefinition = "DECIMAL(19,2) DEFAULT 0")
-    private Double availableBalance;
+    @Column(precision = 19, scale = 2)
+    private BigDecimal availableBalance;
 
-    @Column(columnDefinition = "DECIMAL(19,2) DEFAULT 0")
-    private Double lockedBalance;
-
-    public enum ExchangeType {
-        UPBIT, BITHUMB
-    }
-
+    @Column(precision = 19, scale = 2)
+    private BigDecimal lockedBalance;
 }
-

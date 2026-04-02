@@ -1,6 +1,8 @@
 package com.example.cryptobot.account;
 
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -30,10 +32,9 @@ public class AccountController {
     @PostMapping
     public ResponseEntity<Account> createAccount(@RequestBody CreateAccountRequest request) {
         Account account = accountService.createAccount(
-                request.userId,
-                request.exchangeType,
-                request.apiKey,
-                request.secretKey
+                request.getUserId(),
+                request.getApiKey(),
+                request.getSecretKey()
         );
         return ResponseEntity.ok(account);
     }
@@ -50,12 +51,11 @@ public class AccountController {
         return ResponseEntity.ok().build();
     }
 
+    @Getter
+    @Setter
     public static class CreateAccountRequest {
-        public Long userId;
-        public Account.ExchangeType exchangeType;
-        public String apiKey;
-        public String secretKey;
+        private Long userId;
+        private String apiKey;
+        private String secretKey;
     }
-
 }
-
