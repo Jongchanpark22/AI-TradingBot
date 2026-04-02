@@ -38,5 +38,5 @@ out/
 # Application specific
 secrets/
 temp/
-cache/
+# cache/ 제거됨 - src/main/java/com/example/cryptobot/common/cache/ 는 추적 필요
 
