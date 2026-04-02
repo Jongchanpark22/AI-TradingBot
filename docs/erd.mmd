@@ -1,0 +1,122 @@
+erDiagram
+    USERS ||--o{ ACCOUNTS : "has"
+    USERS ||--o{ STRATEGIES : "creates"
+
+    ACCOUNTS ||--o{ ORDERS : "places"
+    ACCOUNTS ||--o{ POSITIONS : "has"
+    ACCOUNTS ||--o{ RISK_RECORDS : "generates"
+    ACCOUNTS ||--o{ STRATEGIES : "executes"
+
+    ORDERS ||--o{ POSITIONS : "affects"
+
+    TICKERS ||--o{ CANDLES : "has"
+    TICKERS ||--o{ POSITIONS : "references"
+
+    CANDLES ||--o{ STRATEGIES : "analyzes"
+
+    USERS {
+        long id PK
+        string username UK
+        string password
+        string email UK
+        enum role
+        boolean is_active
+        datetime last_login_at
+    }
+
+    ACCOUNTS {
+        long id PK
+        long user_id FK
+        enum exchange_type
+        string api_key
+        string secret_key
+        boolean is_active
+        decimal total_balance
+        decimal available_balance
+        decimal locked_balance
+    }
+
+    ORDERS {
+        long id PK
+        long account_id FK
+        string symbol
+        enum type
+        enum side
+        decimal price
+        decimal quantity
+        decimal filled_quantity
+        enum status
+        string exchange_order_id UK
+        decimal total_amount
+        decimal filled_amount
+        decimal fee
+        string remark
+    }
+
+    POSITIONS {
+        long id PK
+        long account_id FK
+        string symbol
+        decimal quantity
+        decimal avg_buy_price
+        decimal current_price
+        decimal unrealized_profit
+        decimal unrealized_profit_rate
+        enum status
+    }
+
+    TICKERS {
+        long id PK
+        string symbol UK
+        decimal current_price
+        decimal high_price_24h
+        decimal low_price_24h
+        decimal volume_24h
+        decimal change_percent_24h
+        decimal bid
+        decimal ask
+        decimal bid_volume
+        decimal ask_volume
+        decimal market_cap
+    }
+
+    CANDLES {
+        long id PK
+        string symbol
+        enum period
+        datetime timestamp
+        decimal open_price
+        decimal high_price
+        decimal low_price
+        decimal close_price
+        decimal volume
+        decimal quote_asset_volume
+    }
+
+    RISK_RECORDS {
+        long id PK
+        long account_id FK
+        date trade_date
+        decimal daily_loss
+        decimal daily_profit
+        boolean is_max_loss_exceeded
+        boolean is_trading_allowed
+        string remark
+    }
+
+    STRATEGIES {
+        long id PK
+        long account_id FK
+        string name
+        enum type
+        string symbol
+        enum status
+        decimal max_order_amount
+        decimal max_daily_loss
+        boolean use_stop_loss
+        decimal stop_loss_percent
+        boolean use_take_profit
+        decimal take_profit_percent
+        string parameters
+    }
+

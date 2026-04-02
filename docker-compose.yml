@@ -1,0 +1,45 @@
+# 로컬 MySQL과 Redis를 이미 설치하여 사용하는 경우
+# 이 파일은 필요 없습니다.
+#
+# 로컬 MySQL/Redis 설정:
+# MySQL: localhost:3306 (user: bot_user, password: password)
+# Redis: localhost:6379
+#
+# MySQL 시작 (Mac):
+#   brew services start mysql-server
+#
+# Redis 시작 (Mac):
+#   brew services start redis
+#
+# 또는 Homebrew로 설치하지 않았다면 직접 설치 후 실행하세요.
+
+# version: '3.8'
+#
+# services:
+#   mysql:
+#     image: mysql:8.0
+#     container_name: crypto-trading-bot-mysql
+#     environment:
+#       MYSQL_ROOT_PASSWORD: rootpassword
+#       MYSQL_DATABASE: crypto_bot
+#       MYSQL_USER: bot_user
+#       MYSQL_PASSWORD: password
+#       TZ: 'Asia/Seoul'
+#     ports:
+#       - "3306:3306"
+#     volumes:
+#       - mysql_data:/var/lib/mysql
+#
+#   redis:
+#     image: redis:7-alpine
+#     container_name: crypto-trading-bot-redis
+#     ports:
+#       - "6379:6379"
+#     volumes:
+#       - redis_data:/data
+#
+# volumes:
+#   mysql_data:
+#   redis_data:
+
+
