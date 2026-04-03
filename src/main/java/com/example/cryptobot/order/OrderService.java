@@ -28,6 +28,13 @@ public class OrderService {
         BigDecimal safePrice = price != null ? price : BigDecimal.ZERO;
         BigDecimal safeQuantity = quantity != null ? quantity : BigDecimal.ZERO;
 
+        if (safePrice.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException("INVALID_ORDER_PRICE", "주문 가격은 0보다 커야 합니다.");
+        }
+        if (safeQuantity.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException("INVALID_ORDER_QUANTITY", "주문 수량은 0보다 커야 합니다.");
+        }
+
         Order order = Order.builder()
                 .account(account)
                 .symbol(symbol)
@@ -46,6 +53,10 @@ public class OrderService {
     }
 
     public Order createOrder(Order order) {
+        if (order == null) {
+            throw new BusinessException("ORDER_REQUIRED", "주문 정보가 필요합니다.");
+        }
+
         if (order.getStatus() == null) {
             order.setStatus(Order.OrderStatus.PENDING);
         }
@@ -58,11 +69,16 @@ public class OrderService {
         if (order.getFee() == null) {
             order.setFee(BigDecimal.ZERO);
         }
-        if (order.getTotalAmount() == null
-                && order.getPrice() != null
-                && order.getQuantity() != null) {
-            order.setTotalAmount(order.getPrice().multiply(order.getQuantity()));
+
+        if (order.getPrice() == null || order.getPrice().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException("INVALID_ORDER_PRICE", "주문 가격은 0보다 커야 합니다.");
         }
+        if (order.getQuantity() == null || order.getQuantity().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException("INVALID_ORDER_QUANTITY", "주문 수량은 0보다 커야 합니다.");
+        }
+
+        // 항상 실제 값 기준으로 다시 계산
+        order.setTotalAmount(order.getPrice().multiply(order.getQuantity()));
 
         return orderRepository.save(order);
     }
@@ -104,11 +120,16 @@ public class OrderService {
         BigDecimal safeFilledQuantity = filledQuantity != null ? filledQuantity : BigDecimal.ZERO;
         BigDecimal safeFilledAmount = filledAmount != null ? filledAmount : BigDecimal.ZERO;
 
+        BigDecimal maxQuantity = order.getQuantity() != null ? order.getQuantity() : BigDecimal.ZERO;
+        if (safeFilledQuantity.compareTo(maxQuantity) > 0) {
+            safeFilledQuantity = maxQuantity;
+        }
+
         order.setFilledQuantity(safeFilledQuantity);
         order.setFilledAmount(safeFilledAmount);
 
-        if (order.getQuantity() != null) {
-            if (safeFilledQuantity.compareTo(order.getQuantity()) >= 0) {
+        if (maxQuantity.compareTo(BigDecimal.ZERO) > 0) {
+            if (safeFilledQuantity.compareTo(maxQuantity) >= 0) {
                 order.setStatus(Order.OrderStatus.FILLED);
             } else if (safeFilledQuantity.compareTo(BigDecimal.ZERO) > 0) {
                 order.setStatus(Order.OrderStatus.PARTIALLY_FILLED);

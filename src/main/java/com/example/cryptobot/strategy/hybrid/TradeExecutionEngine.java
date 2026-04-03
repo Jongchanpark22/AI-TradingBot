@@ -17,16 +17,32 @@ public class TradeExecutionEngine {
             HybridSignalAnalyzer.TradeSignal signal,
             TradingParameters params) {
 
-        BigDecimal orderAmount = calculateOrderAmount(account, signal, params);
-        if (orderAmount.compareTo(BigDecimal.ZERO) <= 0) {
+        if (account == null || symbol == null || symbol.isBlank() || signal == null || params == null) {
             return null;
         }
 
-        if (currentPrice.compareTo(BigDecimal.ZERO) <= 0) {
+        BigDecimal orderAmount = calculateOrderAmount(account, signal, params);
+        if (orderAmount == null || orderAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            return null;
+        }
+
+        if (currentPrice == null || currentPrice.compareTo(BigDecimal.ZERO) <= 0) {
             return null;
         }
 
         BigDecimal quantity = orderAmount.divide(currentPrice, 8, RoundingMode.DOWN);
+
+        // 소수점 8자리 내림 후 수량이 0이면 유효하지 않은 주문이므로 생성하지 않음
+        if (quantity.compareTo(BigDecimal.ZERO) <= 0) {
+            return null;
+        }
+
+        // 실제 주문 수량 기준 금액으로 저장
+        BigDecimal totalAmount = currentPrice.multiply(quantity);
+
+        if (totalAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            return null;
+        }
 
         return Order.builder()
                 .account(account)
@@ -35,8 +51,11 @@ public class TradeExecutionEngine {
                 .side(Order.OrderSide.BUY)
                 .price(currentPrice)
                 .quantity(quantity)
+                .filledQuantity(BigDecimal.ZERO)
+                .filledAmount(BigDecimal.ZERO)
+                .fee(BigDecimal.ZERO)
                 .status(Order.OrderStatus.PENDING)
-                .totalAmount(orderAmount)
+                .totalAmount(totalAmount)
                 .build();
     }
 
@@ -47,6 +66,23 @@ public class TradeExecutionEngine {
             BigDecimal quantity,
             HybridSignalAnalyzer.TradeSignal signal) {
 
+        if (account == null || symbol == null || symbol.isBlank()) {
+            return null;
+        }
+
+        if (currentPrice == null || currentPrice.compareTo(BigDecimal.ZERO) <= 0) {
+            return null;
+        }
+
+        if (quantity == null || quantity.compareTo(BigDecimal.ZERO) <= 0) {
+            return null;
+        }
+
+        BigDecimal totalAmount = currentPrice.multiply(quantity);
+        if (totalAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            return null;
+        }
+
         return Order.builder()
                 .account(account)
                 .symbol(symbol)
@@ -54,8 +90,11 @@ public class TradeExecutionEngine {
                 .side(Order.OrderSide.SELL)
                 .price(currentPrice)
                 .quantity(quantity)
+                .filledQuantity(BigDecimal.ZERO)
+                .filledAmount(BigDecimal.ZERO)
+                .fee(BigDecimal.ZERO)
                 .status(Order.OrderStatus.PENDING)
-                .totalAmount(currentPrice.multiply(quantity))
+                .totalAmount(totalAmount)
                 .build();
     }
 
@@ -65,6 +104,18 @@ public class TradeExecutionEngine {
             BigDecimal stopLossPrice,
             BigDecimal quantity) {
 
+        if (account == null || symbol == null || symbol.isBlank()) {
+            return null;
+        }
+
+        if (stopLossPrice == null || stopLossPrice.compareTo(BigDecimal.ZERO) <= 0) {
+            return null;
+        }
+
+        if (quantity == null || quantity.compareTo(BigDecimal.ZERO) <= 0) {
+            return null;
+        }
+
         return Order.builder()
                 .account(account)
                 .symbol(symbol)
@@ -72,6 +123,9 @@ public class TradeExecutionEngine {
                 .side(Order.OrderSide.SELL)
                 .price(stopLossPrice)
                 .quantity(quantity)
+                .filledQuantity(BigDecimal.ZERO)
+                .filledAmount(BigDecimal.ZERO)
+                .fee(BigDecimal.ZERO)
                 .status(Order.OrderStatus.PENDING)
                 .remark("StopLoss")
                 .build();
@@ -83,6 +137,18 @@ public class TradeExecutionEngine {
             BigDecimal takeProfitPrice,
             BigDecimal quantity) {
 
+        if (account == null || symbol == null || symbol.isBlank()) {
+            return null;
+        }
+
+        if (takeProfitPrice == null || takeProfitPrice.compareTo(BigDecimal.ZERO) <= 0) {
+            return null;
+        }
+
+        if (quantity == null || quantity.compareTo(BigDecimal.ZERO) <= 0) {
+            return null;
+        }
+
         return Order.builder()
                 .account(account)
                 .symbol(symbol)
@@ -90,6 +156,9 @@ public class TradeExecutionEngine {
                 .side(Order.OrderSide.SELL)
                 .price(takeProfitPrice)
                 .quantity(quantity)
+                .filledQuantity(BigDecimal.ZERO)
+                .filledAmount(BigDecimal.ZERO)
+                .fee(BigDecimal.ZERO)
                 .status(Order.OrderStatus.PENDING)
                 .remark("TakeProfit")
                 .build();
@@ -100,6 +169,10 @@ public class TradeExecutionEngine {
             HybridSignalAnalyzer.TradeSignal signal,
             TradingParameters params) {
 
+        if (account == null || signal == null || params == null) {
+            return BigDecimal.ZERO;
+        }
+
         BigDecimal availableBalance = account.getAvailableBalance();
         BigDecimal totalBalance = account.getTotalBalance();
 
@@ -107,8 +180,24 @@ public class TradeExecutionEngine {
             return BigDecimal.ZERO;
         }
 
-        BigDecimal baseAmount = totalBalance.multiply(params.getRiskPerTrade());
+        if (availableBalance.compareTo(BigDecimal.ZERO) <= 0 || totalBalance.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO;
+        }
+
+        BigDecimal riskPerTrade = params.getRiskPerTrade() != null
+                ? params.getRiskPerTrade()
+                : BigDecimal.ZERO;
+
+        if (riskPerTrade.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO;
+        }
+
+        BigDecimal baseAmount = totalBalance.multiply(riskPerTrade);
         baseAmount = baseAmount.min(availableBalance);
+
+        if (baseAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO;
+        }
 
         return switch (signal.getSignal()) {
             case STRONG_BUY -> baseAmount;

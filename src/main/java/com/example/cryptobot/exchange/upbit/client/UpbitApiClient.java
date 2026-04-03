@@ -10,28 +10,26 @@ import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.*;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.math.BigDecimal;
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.Key;
-import java.time.Instant;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.security.MessageDigest;
+import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * 업비트 API 클라이언트
- * 
+ *
  * 기능:
  * - 시세 조회 (Ticker)
  * - 캔들 데이터 조회
  * - 계정 정보 조회
- * - 주문 생성/조회
+ * - 주문 생성/취소
  */
 @Slf4j
 @Component
@@ -45,20 +43,29 @@ public class UpbitApiClient {
 
     /**
      * 시세 정보 조회
-     * 
-     * @param market BTC-KRW, ETH-KRW, XRP-KRW 등
-     * @return 시세 정보
+     *
+     * @param market KRW-BTC, KRW-ETH, KRW-XRP 등
      */
     public UpbitTickerDto getTicker(String market) {
         try {
-            String url = properties.getBaseUrl() + "/v1/ticker?markets=" + market;
-            UpbitTickerDto[] response = restTemplate.getForObject(url, UpbitTickerDto[].class);
-            
-            if (response != null && response.length > 0) {
-                log.debug("시세 조회 성공: {} = {}", market, response[0].getTradePrice());
-                return response[0];
+            String url = UriComponentsBuilder
+                    .fromHttpUrl(properties.getBaseUrl() + "/v1/ticker")
+                    .queryParam("markets", market)
+                    .toUriString();
+
+            ResponseEntity<UpbitTickerDto[]> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.GET,
+                    null,
+                    UpbitTickerDto[].class
+            );
+
+            UpbitTickerDto[] body = response.getBody();
+            if (body != null && body.length > 0) {
+                log.debug("시세 조회 성공: {} = {}", market, body[0].getTradePrice());
+                return body[0];
             }
-            
+
             log.warn("시세 정보 없음: {}", market);
             return null;
         } catch (Exception e) {
@@ -69,52 +76,64 @@ public class UpbitApiClient {
 
     /**
      * 여러 시세 정보 조회
-     * 
-     * @param markets BTC-KRW, ETH-KRW 등 쉼표로 구분
-     * @return 시세 정보 리스트
+     *
+     * @param markets KRW-BTC,KRW-ETH 등 쉼표 구분
      */
     public List<UpbitTickerDto> getTickers(String markets) {
         try {
-            String url = properties.getBaseUrl() + "/v1/ticker?markets=" + markets;
-            UpbitTickerDto[] response = restTemplate.getForObject(url, UpbitTickerDto[].class);
-            
-            if (response != null) {
-                log.debug("시세 조회 성공: {} 개", response.length);
-                return Arrays.asList(response);
+            String url = UriComponentsBuilder
+                    .fromHttpUrl(properties.getBaseUrl() + "/v1/ticker")
+                    .queryParam("markets", markets)
+                    .toUriString();
+
+            ResponseEntity<UpbitTickerDto[]> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.GET,
+                    null,
+                    UpbitTickerDto[].class
+            );
+
+            UpbitTickerDto[] body = response.getBody();
+            if (body != null) {
+                log.debug("다중 시세 조회 성공: {} 개", body.length);
+                return Arrays.asList(body);
             }
-            
+
             return List.of();
         } catch (Exception e) {
-            log.error("시세 조회 실패: {}", markets, e);
+            log.error("다중 시세 조회 실패: {}", markets, e);
             return List.of();
         }
     }
 
     /**
      * 캔들 데이터 조회
-     * 
-     * @param market BTC-KRW, ETH-KRW 등
+     *
+     * @param market KRW-BTC, KRW-ETH 등
      * @param unit 분봉 단위 (1, 5, 15, 30, 60, 240)
-     * @param count 조회 개수 (최대 200)
-     * @return 캔들 데이터 리스트
+     * @param count 조회 개수
      */
     public List<UpbitCandleDto> getCandles(String market, int unit, int count) {
         try {
-            String url = String.format(
-                    "%s/v1/candles/minutes/%d?market=%s&count=%d",
-                    properties.getBaseUrl(),
-                    unit,
-                    market,
-                    count
+            String url = UriComponentsBuilder
+                    .fromHttpUrl(properties.getBaseUrl() + "/v1/candles/minutes/" + unit)
+                    .queryParam("market", market)
+                    .queryParam("count", count)
+                    .toUriString();
+
+            ResponseEntity<UpbitCandleDto[]> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.GET,
+                    null,
+                    UpbitCandleDto[].class
             );
-            
-            UpbitCandleDto[] response = restTemplate.getForObject(url, UpbitCandleDto[].class);
-            
-            if (response != null) {
-                log.debug("캔들 조회 성공: {} {}분봉 {} 개", market, unit, response.length);
-                return Arrays.asList(response);
+
+            UpbitCandleDto[] body = response.getBody();
+            if (body != null) {
+                log.debug("캔들 조회 성공: {} {}분봉 {} 개", market, unit, body.length);
+                return Arrays.asList(body);
             }
-            
+
             return List.of();
         } catch (Exception e) {
             log.error("캔들 조회 실패: {} {}분봉", market, unit, e);
@@ -122,30 +141,31 @@ public class UpbitApiClient {
         }
     }
 
-    // ===== 인증이 필요한 API =====
+    // ===== 인증 필요 API =====
 
     /**
      * 계정 정보 조회
-     * 
-     * @return 계정 정보 리스트 (화폐별)
      */
     public List<UpbitAccountDto> getAccounts() {
         try {
-            String authorizationToken = generateAuthToken("");
+            String token = generateAuthToken(null);
             String url = properties.getBaseUrl() + "/v1/accounts";
-            
-            UpbitAccountDto[] response = restTemplate
-                    .getForObject(
-                            url,
-                            UpbitAccountDto[].class,
-                            createHeaders(authorizationToken)
-                    );
-            
-            if (response != null) {
-                log.debug("계정 조회 성공: {} 개 화폐", response.length);
-                return Arrays.asList(response);
+
+            HttpEntity<Void> entity = new HttpEntity<>(createAuthHeaders(token));
+
+            ResponseEntity<UpbitAccountDto[]> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.GET,
+                    entity,
+                    UpbitAccountDto[].class
+            );
+
+            UpbitAccountDto[] body = response.getBody();
+            if (body != null) {
+                log.debug("계정 조회 성공: {} 개 화폐", body.length);
+                return Arrays.asList(body);
             }
-            
+
             return List.of();
         } catch (Exception e) {
             log.error("계정 조회 실패", e);
@@ -155,48 +175,51 @@ public class UpbitApiClient {
 
     /**
      * 주문 생성
-     * 
-     * @param market BTC-KRW, ETH-KRW 등
-     * @param side "bid" (매수) 또는 "ask" (매도)
-     * @param ordType "limit" (지정가) 또는 "market" (시장가)
+     *
+     * @param market KRW-BTC, KRW-ETH 등
+     * @param side bid(매수) 또는 ask(매도)
+     * @param ordType limit(지정가) 또는 market(시장가)
      * @param volume 주문 수량
-     * @param price 주문 가격 (지정가일 때 필수)
-     * @return 주문 정보
+     * @param price 주문 가격
      */
     public UpbitOrderDto createOrder(
             String market,
             String side,
             String ordType,
             BigDecimal volume,
-            BigDecimal price) {
+            BigDecimal price
+    ) {
         try {
-            Map<String, Object> params = new HashMap<>();
-            params.put("market", market);
-            params.put("side", side);
-            params.put("ord_type", ordType);
-            params.put("volume", volume.toPlainString());
-            
-            if ("limit".equals(ordType) && price != null) {
-                params.put("price", price.toPlainString());
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("market", market);
+            body.put("side", side);
+            body.put("ord_type", ordType);
+
+            if (volume != null) {
+                body.put("volume", volume.toPlainString());
             }
-            
-            String query = buildQueryString(params);
-            String authorizationToken = generateAuthToken(query);
-            String url = properties.getBaseUrl() + "/v1/orders?" + query;
-            
-            UpbitOrderDto response = restTemplate.postForObject(
-                    url,
-                    null,
-                    UpbitOrderDto.class,
-                    createHeaders(authorizationToken)
+            if (price != null) {
+                body.put("price", price.toPlainString());
+            }
+
+            String queryStringForHash = buildQueryStringForHash(body);
+            String token = generateAuthToken(queryStringForHash);
+
+            HttpEntity<Map<String, Object>> entity =
+                    new HttpEntity<>(body, createAuthHeaders(token));
+
+            ResponseEntity<UpbitOrderDto> response = restTemplate.exchange(
+                    properties.getBaseUrl() + "/v1/orders",
+                    HttpMethod.POST,
+                    entity,
+                    UpbitOrderDto.class
             );
-            
-            if (response != null) {
+
+            UpbitOrderDto result = response.getBody();
+            if (result != null) {
                 log.info("주문 생성 성공: {} {} {} {}", market, side, volume, price);
-                return response;
             }
-            
-            return null;
+            return result;
         } catch (Exception e) {
             log.error("주문 생성 실패: {} {} {} {}", market, side, volume, price, e);
             return null;
@@ -205,32 +228,36 @@ public class UpbitApiClient {
 
     /**
      * 주문 취소
-     * 
-     * @param uuid 주문 UUID
-     * @return 주문 정보
+     *
+     * @param uuid 업비트 주문 UUID
      */
     public UpbitOrderDto cancelOrder(String uuid) {
         try {
-            Map<String, Object> params = new HashMap<>();
+            Map<String, Object> params = new LinkedHashMap<>();
             params.put("uuid", uuid);
-            
-            String query = buildQueryString(params);
-            String authorizationToken = generateAuthToken(query);
-            String url = properties.getBaseUrl() + "/v1/order?" + query;
-            
-            // RestTemplate delete 메서드는 반환값이 없으므로, GET으로 변경
-            UpbitOrderDto response = restTemplate.getForObject(
+
+            String queryStringForHash = buildQueryStringForHash(params);
+            String token = generateAuthToken(queryStringForHash);
+
+            String url = UriComponentsBuilder
+                    .fromHttpUrl(properties.getBaseUrl() + "/v1/order")
+                    .queryParam("uuid", uuid)
+                    .toUriString();
+
+            HttpEntity<Void> entity = new HttpEntity<>(createAuthHeaders(token));
+
+            ResponseEntity<UpbitOrderDto> response = restTemplate.exchange(
                     url,
-                    UpbitOrderDto.class,
-                    createHeaders(authorizationToken)
+                    HttpMethod.DELETE,
+                    entity,
+                    UpbitOrderDto.class
             );
-            
-            if (response != null) {
+
+            UpbitOrderDto result = response.getBody();
+            if (result != null) {
                 log.info("주문 취소 성공: {}", uuid);
-                return response;
             }
-            
-            return null;
+            return result;
         } catch (Exception e) {
             log.error("주문 취소 실패: {}", uuid, e);
             return null;
@@ -240,75 +267,66 @@ public class UpbitApiClient {
     // ===== 헬퍼 메서드 =====
 
     /**
-     * JWT 토큰 생성 (업비트 인증용)
+     * 업비트 인증용 JWT 생성
      */
-    private String generateAuthToken(String query) throws Exception {
+    private String generateAuthToken(String queryStringForHash) {
         Key key = Keys.hmacShaKeyFor(properties.getSecretKey().getBytes(StandardCharsets.UTF_8));
-        
-        Map<String, Object> headers = new HashMap<>();
-        headers.put("alg", "HS256");
-        headers.put("typ", "JWT");
-        
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("access_key", properties.getAccessKey());
-        payload.put("nonce", UUID.randomUUID().toString());
-        payload.put("timestamp", System.currentTimeMillis());
-        payload.put("query_hash_alg", "SHA512");
-        
-        if (query != null && !query.isEmpty()) {
-            payload.put("query_hash", hashQueryString(query));
+
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("access_key", properties.getAccessKey());
+        claims.put("nonce", UUID.randomUUID().toString());
+
+        if (queryStringForHash != null && !queryStringForHash.isBlank()) {
+            claims.put("query_hash", hashQueryString(queryStringForHash));
+            claims.put("query_hash_alg", "SHA512");
         }
-        
+
         return Jwts.builder()
-                .setHeader(headers)
-                .setClaims(payload)
-                .signWith(key, SignatureAlgorithm.HS256)
+                .setClaims(claims)
+                .signWith(key, SignatureAlgorithm.HS512)
                 .compact();
     }
 
     /**
-     * 쿼리 스트링 생성
+     * query_hash 생성용 쿼리 문자열
+     * URL 인코딩 없이 원문 기준으로 생성
      */
-    private String buildQueryString(Map<String, Object> params) {
-        StringBuilder sb = new StringBuilder();
-        params.forEach((key, value) -> {
-            if (sb.length() > 0) {
-                sb.append("&");
-            }
-            sb.append(key).append("=").append(URLEncoder.encode(value.toString(), StandardCharsets.UTF_8));
-        });
-        return sb.toString();
+    private String buildQueryStringForHash(Map<String, Object> params) {
+        return params.entrySet().stream()
+                .map(entry -> entry.getKey() + "=" + entry.getValue())
+                .collect(Collectors.joining("&"));
     }
 
     /**
-     * 쿼리 스트링 해시 (SHA512)
+     * SHA-512 해시
      */
     private String hashQueryString(String query) {
         try {
-            java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-512");
+            MessageDigest digest = MessageDigest.getInstance("SHA-512");
             byte[] hash = digest.digest(query.getBytes(StandardCharsets.UTF_8));
-            
-            StringBuilder hexString = new StringBuilder();
+
+            StringBuilder sb = new StringBuilder();
             for (byte b : hash) {
                 String hex = Integer.toHexString(0xff & b);
-                if (hex.length() == 1) hexString.append('0');
-                hexString.append(hex);
+                if (hex.length() == 1) {
+                    sb.append('0');
+                }
+                sb.append(hex);
             }
-            return hexString.toString();
+            return sb.toString();
         } catch (Exception e) {
-            log.error("쿼리 해시 생성 실패", e);
-            return "";
+            log.error("query_hash 생성 실패", e);
+            throw new IllegalStateException("query_hash 생성 실패", e);
         }
     }
 
     /**
-     * HTTP 헤더 생성
+     * 인증 헤더 생성
      */
-    private Map<String, String> createHeaders(String authorizationToken) {
-        Map<String, String> headers = new HashMap<>();
-        headers.put("Authorization", "Bearer " + authorizationToken);
-        headers.put("Content-Type", "application/json");
+    private HttpHeaders createAuthHeaders(String token) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
+        headers.setContentType(MediaType.APPLICATION_JSON);
         return headers;
     }
 }
-
