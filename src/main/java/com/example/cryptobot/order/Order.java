@@ -5,11 +5,13 @@ import com.example.cryptobot.common.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.math.BigDecimal;
+
 @Entity
 @Table(name = "orders", indexes = {
-    @Index(name = "idx_account_id", columnList = "account_id"),
-    @Index(name = "idx_symbol", columnList = "symbol"),
-    @Index(name = "idx_status", columnList = "status")
+        @Index(name = "idx_account_id", columnList = "account_id"),
+        @Index(name = "idx_symbol", columnList = "symbol"),
+        @Index(name = "idx_status", columnList = "status")
 })
 @Getter
 @Setter
@@ -37,14 +39,14 @@ public class Order extends BaseEntity {
     @Column(nullable = false)
     private OrderSide side;
 
-    @Column(columnDefinition = "DECIMAL(19,2) DEFAULT 0")
-    private Double price;
+    @Column(precision = 19, scale = 2)
+    private BigDecimal price;
 
-    @Column(columnDefinition = "DECIMAL(19,8) DEFAULT 0")
-    private Double quantity;
+    @Column(precision = 19, scale = 8)
+    private BigDecimal quantity;
 
-    @Column(columnDefinition = "DECIMAL(19,8) DEFAULT 0")
-    private Double filledQuantity;
+    @Column(precision = 19, scale = 8)
+    private BigDecimal filledQuantity;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -53,14 +55,14 @@ public class Order extends BaseEntity {
     @Column(unique = true)
     private String exchangeOrderId;
 
-    @Column(columnDefinition = "DECIMAL(19,2) DEFAULT 0")
-    private Double totalAmount;
+    @Column(precision = 19, scale = 2)
+    private BigDecimal totalAmount;
 
-    @Column(columnDefinition = "DECIMAL(19,2) DEFAULT 0")
-    private Double filledAmount;
+    @Column(precision = 19, scale = 2)
+    private BigDecimal filledAmount;
 
-    @Column(columnDefinition = "DECIMAL(19,4) DEFAULT 0")
-    private Double fee;
+    @Column(precision = 19, scale = 4)
+    private BigDecimal fee;
 
     private String remark;
 
@@ -75,6 +77,4 @@ public class Order extends BaseEntity {
     public enum OrderStatus {
         PENDING, PARTIALLY_FILLED, FILLED, CANCELLED, REJECTED
     }
-
 }
-

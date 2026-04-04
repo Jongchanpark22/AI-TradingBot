@@ -5,6 +5,7 @@ import com.example.cryptobot.common.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 
 @Entity
@@ -27,11 +28,11 @@ public class RiskRecord extends BaseEntity {
     @Column(nullable = false)
     private LocalDate tradeDate;
 
-    @Column(columnDefinition = "DECIMAL(19,2) DEFAULT 0")
-    private Double dailyLoss;
+    @Column(precision = 19, scale = 2)
+    private BigDecimal dailyLoss;
 
-    @Column(columnDefinition = "DECIMAL(19,2) DEFAULT 0")
-    private Double dailyProfit;
+    @Column(precision = 19, scale = 2)
+    private BigDecimal dailyProfit;
 
     @Column(nullable = false)
     private Boolean isMaxLossExceeded;
@@ -40,6 +41,4 @@ public class RiskRecord extends BaseEntity {
     private Boolean isTradingAllowed;
 
     private String remark;
-
 }
-
