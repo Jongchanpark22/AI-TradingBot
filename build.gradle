@@ -46,6 +46,13 @@ dependencies {
     // Apache HttpClient
     implementation 'org.apache.httpcomponents.client5:httpclient5:5.2.1'
 
+    // Swagger UI (SpringDoc OpenAPI)
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.2.0'
+
+    // Spring Security
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+    implementation 'org.springframework.security:spring-security-test'
+
     // Lombok
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'

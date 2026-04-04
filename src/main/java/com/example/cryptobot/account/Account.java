@@ -1,16 +1,13 @@
 package com.example.cryptobot.account;
 
 import com.example.cryptobot.common.entity.BaseEntity;
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 
 import java.math.BigDecimal;
 
 @Entity
-@Table(name = "accounts", uniqueConstraints = {
-        @UniqueConstraint(columnNames = {"user_id"})
-})
+@Table(name = "accounts")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -22,27 +19,18 @@ public class Account extends BaseEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "user_id")
-    private User user;
-
-    @JsonIgnore
-    @Column(nullable = false)
-    private String apiKey;
-
-    @JsonIgnore
-    @Column(nullable = false)
-    private String secretKey;
-
     @Column(nullable = false)
     private Boolean isActive;
 
-    @Column(precision = 19, scale = 2)
-    private BigDecimal totalBalance;
+    @Builder.Default
+    @Column(precision = 19, scale = 2, nullable = false)
+    private BigDecimal totalBalance = BigDecimal.ZERO;
 
-    @Column(precision = 19, scale = 2)
-    private BigDecimal availableBalance;
+    @Builder.Default
+    @Column(precision = 19, scale = 2, nullable = false)
+    private BigDecimal availableBalance = BigDecimal.ZERO;
 
-    @Column(precision = 19, scale = 2)
-    private BigDecimal lockedBalance;
+    @Builder.Default
+    @Column(precision = 19, scale = 2, nullable = false)
+    private BigDecimal lockedBalance = BigDecimal.ZERO;
 }

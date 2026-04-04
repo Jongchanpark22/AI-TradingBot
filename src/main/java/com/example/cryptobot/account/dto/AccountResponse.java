@@ -15,7 +15,6 @@ import java.math.BigDecimal;
 public class AccountResponse {
 
     private Long id;
-    private Long userId;
     private Boolean isActive;
     private BigDecimal totalBalance;
     private BigDecimal availableBalance;
@@ -24,7 +23,6 @@ public class AccountResponse {
     public static AccountResponse from(Account account) {
         return AccountResponse.builder()
                 .id(account.getId())
-                .userId(account.getUser() != null ? account.getUser().getId() : null)
                 .isActive(account.getIsActive())
                 .totalBalance(account.getTotalBalance())
                 .availableBalance(account.getAvailableBalance())

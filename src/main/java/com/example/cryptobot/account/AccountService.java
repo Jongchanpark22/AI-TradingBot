@@ -1,13 +1,13 @@
 package com.example.cryptobot.account;
 
 import com.example.cryptobot.common.exception.BusinessException;
+import com.example.cryptobot.exchange.upbit.service.UpbitAccountService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -16,62 +16,53 @@ import java.util.List;
 public class AccountService {
 
     private final AccountRepository accountRepository;
-    private final UserRepository userRepository;
+    private final UpbitAccountService upbitAccountService;
 
     @Transactional(readOnly = true)
-    public List<Account> getAccountsByUserId(Long userId) {
-        return accountRepository.findByUserId(userId);
+    public Account getPrimaryAccount() {
+        return accountRepository.findAll().stream()
+                .findFirst()
+                .orElseThrow(() -> new BusinessException("ACCOUNT_NOT_FOUND", "기본 계정이 없습니다."));
     }
 
-    @Transactional(readOnly = true)
-    public Account getAccount(Long accountId) {
-        return accountRepository.findById(accountId)
-                .orElseThrow(() -> new BusinessException("ACCOUNT_NOT_FOUND", "계정을 찾을 수 없습니다."));
+    public Account createDefaultAccountIfNotExists() {
+        return accountRepository.findAll().stream()
+                .findFirst()
+                .orElseGet(() -> accountRepository.save(
+                        Account.builder()
+                                .isActive(false)
+                                .totalBalance(BigDecimal.ZERO)
+                                .availableBalance(BigDecimal.ZERO)
+                                .lockedBalance(BigDecimal.ZERO)
+                                .build()
+                ));
     }
 
-    public Account createAccount(Long userId, String apiKey, String secretKey) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new BusinessException("USER_NOT_FOUND", "사용자를 찾을 수 없습니다."));
+    public Account syncBalanceFromUpbit() {
+        Account account = createDefaultAccountIfNotExists();
 
-        Account account = Account.builder()
-                .user(user)
-                .apiKey(apiKey)
-                .secretKey(secretKey)
-                .isActive(false)
-                .totalBalance(BigDecimal.ZERO)
-                .availableBalance(BigDecimal.ZERO)
-                .lockedBalance(BigDecimal.ZERO)
-                .build();
+        BigDecimal totalBalance = upbitAccountService.getKRWBalance();
+        BigDecimal availableBalance = upbitAccountService.getAvailableKRW();
+        BigDecimal lockedBalance = totalBalance.subtract(availableBalance);
+
+        account.setTotalBalance(totalBalance);
+        account.setAvailableBalance(availableBalance);
+        account.setLockedBalance(lockedBalance.compareTo(BigDecimal.ZERO) >= 0 ? lockedBalance : BigDecimal.ZERO);
 
         return accountRepository.save(account);
     }
 
-    public Account updateBalance(
-            Long accountId,
-            BigDecimal totalBalance,
-            BigDecimal availableBalance,
-            BigDecimal lockedBalance
-    ) {
-        Account account = getAccount(accountId);
-
-        account.setTotalBalance(totalBalance != null ? totalBalance : BigDecimal.ZERO);
-        account.setAvailableBalance(availableBalance != null ? availableBalance : BigDecimal.ZERO);
-        account.setLockedBalance(lockedBalance != null ? lockedBalance : BigDecimal.ZERO);
-
-        return accountRepository.save(account);
-    }
-
-    public void activateAccount(Long accountId) {
-        Account account = getAccount(accountId);
+    public void activateAccount() {
+        Account account = createDefaultAccountIfNotExists();
         account.setIsActive(true);
         accountRepository.save(account);
-        log.info("Account activated: {}", accountId);
+        log.info("Primary account activated");
     }
 
-    public void deactivateAccount(Long accountId) {
-        Account account = getAccount(accountId);
+    public void deactivateAccount() {
+        Account account = createDefaultAccountIfNotExists();
         account.setIsActive(false);
         accountRepository.save(account);
-        log.info("Account deactivated: {}", accountId);
+        log.info("Primary account deactivated");
     }
 }
