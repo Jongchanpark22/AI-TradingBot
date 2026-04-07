@@ -1,7 +1,7 @@
-package com.example.cryptobot.exchange.upbit.service;
+package com.example.cryptobot.upbit.service;
 
 import com.example.cryptobot.account.Account;
-import com.example.cryptobot.exchange.upbit.dto.UpbitOrderDto;
+import com.example.cryptobot.upbit.dto.UpbitOrderDto;
 import com.example.cryptobot.order.Order;
 import com.example.cryptobot.order.OrderRepository;
 import lombok.RequiredArgsConstructor;

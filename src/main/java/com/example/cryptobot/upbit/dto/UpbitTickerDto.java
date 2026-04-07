@@ -1,4 +1,4 @@
-package com.example.cryptobot.exchange.upbit.dto;
+package com.example.cryptobot.upbit.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;

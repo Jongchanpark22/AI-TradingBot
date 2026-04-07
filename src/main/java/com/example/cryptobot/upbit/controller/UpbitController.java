@@ -1,10 +1,11 @@
-package com.example.cryptobot.exchange.upbit.controller;
+package com.example.cryptobot.upbit.controller;
 
-import com.example.cryptobot.exchange.upbit.dto.UpbitAccountDto;
-import com.example.cryptobot.exchange.upbit.dto.UpbitOrderDto;
-import com.example.cryptobot.exchange.upbit.service.UpbitAccountService;
-import com.example.cryptobot.exchange.upbit.service.UpbitMarketService;
-import com.example.cryptobot.exchange.upbit.service.UpbitOrderService;
+import com.example.cryptobot.upbit.dto.UpbitAccountDto;
+import com.example.cryptobot.upbit.dto.UpbitOrderChanceDto;
+import com.example.cryptobot.upbit.dto.UpbitOrderDto;
+import com.example.cryptobot.upbit.service.UpbitAccountService;
+import com.example.cryptobot.upbit.service.UpbitMarketService;
+import com.example.cryptobot.upbit.service.UpbitOrderService;
 import com.example.cryptobot.market.candle.Candle;
 import com.example.cryptobot.market.ticker.Ticker;
 import lombok.Getter;
@@ -151,6 +152,32 @@ public class UpbitController {
     public ResponseEntity<UpbitOrderDto> cancelOrder(@PathVariable String uuid) {
         UpbitOrderDto order = upbitOrderService.cancelOrder(uuid);
         return ResponseEntity.ok(order);
+    }
+
+    @GetMapping("/orders/chance")
+    public ResponseEntity<UpbitOrderChanceDto> getOrderChance(@RequestParam String market) {
+        UpbitOrderChanceDto result = upbitOrderService.getOrderChance(market);
+        return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/orders/test/buy")
+    public ResponseEntity<UpbitOrderDto> testBuyOrder(@RequestBody OrderRequest request) {
+        UpbitOrderDto result = upbitOrderService.testBuyOrder(
+                request.getMarket(),
+                request.getVolume(),
+                request.getPrice()
+        );
+        return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/orders/test/sell")
+    public ResponseEntity<UpbitOrderDto> testSellOrder(@RequestBody OrderRequest request) {
+        UpbitOrderDto result = upbitOrderService.testSellOrder(
+                request.getMarket(),
+                request.getVolume(),
+                request.getPrice()
+        );
+        return ResponseEntity.ok(result);
     }
 
     @Getter

@@ -1,4 +1,4 @@
-package com.example.cryptobot.exchange.upbit.config;
+package com.example.cryptobot.upbit.config;
 
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;

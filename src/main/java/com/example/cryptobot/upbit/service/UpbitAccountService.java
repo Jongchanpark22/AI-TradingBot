@@ -1,7 +1,7 @@
-package com.example.cryptobot.exchange.upbit.service;
+package com.example.cryptobot.upbit.service;
 
-import com.example.cryptobot.exchange.upbit.client.UpbitApiClient;
-import com.example.cryptobot.exchange.upbit.dto.UpbitAccountDto;
+import com.example.cryptobot.upbit.client.UpbitApiClient;
+import com.example.cryptobot.upbit.dto.UpbitAccountDto;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;

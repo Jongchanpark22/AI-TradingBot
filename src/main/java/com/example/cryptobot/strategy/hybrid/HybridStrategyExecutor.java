@@ -16,6 +16,7 @@ import com.example.cryptobot.strategy.core.StrategyRunLog;
 import com.example.cryptobot.strategy.core.StrategyRunLogRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -36,7 +37,7 @@ public class HybridStrategyExecutor {
     private final RiskService riskService;
     private final StrategyRunLogRepository strategyRunLogRepository;
 
-    private final HybridSignalAnalyzer signalAnalyzer = new HybridSignalAnalyzer();
+    private final HybridSignalAnalyzer signalAnalyzer;
     private final TradeExecutionEngine executionEngine = new TradeExecutionEngine();
 
     @Scheduled(cron = "10 0 * * * *")
@@ -79,19 +80,23 @@ public class HybridStrategyExecutor {
             Strategy strategy,
             String symbol,
             Candle.CandlePeriod period,
-            String periodName) {
-
-        List<Candle> candles = candleRepository.findTopNBySymbolAndPeriodOrderByTimestampDesc(symbol, period, 50);
+            String periodName
+    ) {
+        List<Candle> candles = candleRepository.findBySymbolAndPeriodOrderByTimestampDesc(
+                symbol,
+                period,
+                PageRequest.of(0, 50)
+        );
 
         if (candles == null || candles.size() < 50) {
             log.warn("캔들 데이터 부족: {}, 개수: {}", symbol, candles != null ? candles.size() : 0);
-            saveRunLog(strategy, symbol, periodName, null, null, null, null, null, "NO_SIGNAL", 0, "캔들 데이터 부족", false, "캔들 데이터 부족");
+            saveRunLog(strategy, symbol, periodName, null, null, null, null, null,
+                    "NO_SIGNAL", 0, "캔들 데이터 부족", false, "캔들 데이터 부족");
             return;
         }
 
         candles.sort((c1, c2) -> c1.getTimestamp().compareTo(c2.getTimestamp()));
 
-        // BigDecimal을 Double로 변환
         List<Double> closePrices = candles.stream()
                 .map(c -> c.getClosePrice() != null ? c.getClosePrice().doubleValue() : 0.0)
                 .toList();
@@ -103,19 +108,19 @@ public class HybridStrategyExecutor {
         TechnicalIndicatorCalculator.MACDValues macdValues = TechnicalIndicatorCalculator.calculateMACD(closePrices);
         if (macdValues == null) {
             log.warn("MACD 계산 불가: {}", symbol);
-            saveRunLog(strategy, symbol, periodName, ema12, ema26, sma50, null, null, "NO_SIGNAL", 0, "MACD 계산 불가", false, "MACD 계산 불가");
+            saveRunLog(strategy, symbol, periodName, ema12, ema26, sma50, null, null,
+                    "NO_SIGNAL", 0, "MACD 계산 불가", false, "MACD 계산 불가");
             return;
         }
 
         double rsi = TechnicalIndicatorCalculator.calculateRSI(closePrices, 14);
 
-        // BigDecimal을 Double로 변환
         List<Double> volumes = candles.stream()
                 .map(c -> c.getVolume() != null ? c.getVolume().doubleValue() : 0.0)
                 .toList();
 
         double volumeMA20 = TechnicalIndicatorCalculator.calculateVolumeMA(volumes, 20);
-        double currentVolume = candles.get(candles.size() - 1).getVolume() != null 
+        double currentVolume = candles.get(candles.size() - 1).getVolume() != null
                 ? candles.get(candles.size() - 1).getVolume().doubleValue() : 0.0;
         double volumeRatio = volumeMA20 > 0 ? currentVolume / volumeMA20 : 0;
 
@@ -153,7 +158,8 @@ public class HybridStrategyExecutor {
         if (tickerOpt.isEmpty()) {
             log.warn("시세 정보 없음: {}", symbol);
             saveRunLog(strategy, symbol, periodName, ema12, ema26, sma50, rsi, volumeRatio,
-                    tradeSignal.getSignal().name(), tradeSignal.getConfidence(), tradeSignal.getReason(), false, "시세 정보 없음");
+                    tradeSignal.getSignal().name(), tradeSignal.getConfidence(), tradeSignal.getReason(),
+                    false, "시세 정보 없음");
             return;
         }
 
@@ -161,17 +167,16 @@ public class HybridStrategyExecutor {
         boolean orderCreated = executeTradeSignal(strategy, symbol, currentPrice, tradeSignal);
 
         saveRunLog(strategy, symbol, periodName, ema12, ema26, sma50, rsi, volumeRatio,
-                tradeSignal.getSignal().name(), tradeSignal.getConfidence(), tradeSignal.getReason(), orderCreated, null);
+                tradeSignal.getSignal().name(), tradeSignal.getConfidence(), tradeSignal.getReason(),
+                orderCreated, null);
     }
 
     private boolean executeTradeSignal(
             Strategy strategy,
             String symbol,
             BigDecimal currentPrice,
-            HybridSignalAnalyzer.TradeSignal signal) {
-
-        Account account = strategy.getAccount();
-
+            HybridSignalAnalyzer.TradeSignal signal
+    ) {
         TradeExecutionEngine.TradingParameters params = TradeExecutionEngine.TradingParameters.builder()
                 .riskPerTrade(new BigDecimal("0.03"))
                 .stopLossPercent(strategy.getStopLossPercent() != null ? strategy.getStopLossPercent() : new BigDecimal("2.5"))
@@ -204,8 +209,8 @@ public class HybridStrategyExecutor {
             String symbol,
             BigDecimal currentPrice,
             HybridSignalAnalyzer.TradeSignal signal,
-            TradeExecutionEngine.TradingParameters params) {
-
+            TradeExecutionEngine.TradingParameters params
+    ) {
         try {
             RiskService.RiskCheckResult riskResult = riskService.validateBuy(
                     strategy.getAccount(),
@@ -243,15 +248,14 @@ public class HybridStrategyExecutor {
     private boolean executeSellSignal(
             Strategy strategy,
             String symbol,
-            BigDecimal currentPrice) {
-
+            BigDecimal currentPrice
+    ) {
         try {
-            Optional<Position> positionOpt = positionRepository
-                    .findByAccountAndSymbolAndStatus(
-                            strategy.getAccount(),
-                            symbol,
-                            Position.PositionStatus.OPEN
-                    );
+            Optional<Position> positionOpt = positionRepository.findByAccountAndSymbolAndStatus(
+                    strategy.getAccount(),
+                    symbol,
+                    Position.PositionStatus.OPEN
+            );
 
             if (positionOpt.isPresent()) {
                 Position position = positionOpt.get();
@@ -289,8 +293,8 @@ public class HybridStrategyExecutor {
             Integer confidence,
             String reason,
             boolean orderCreated,
-            String blockedReason) {
-
+            String blockedReason
+    ) {
         StrategyRunLog logEntity = StrategyRunLog.builder()
                 .strategyId(strategy.getId())
                 .strategyName(strategy.getName())

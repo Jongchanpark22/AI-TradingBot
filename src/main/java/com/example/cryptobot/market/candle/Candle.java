@@ -8,10 +8,19 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "candles", indexes = {
-        @Index(name = "idx_symbol_period", columnList = "symbol,period"),
-        @Index(name = "idx_timestamp", columnList = "timestamp")
-})
+@Table(
+        name = "candles",
+        indexes = {
+                @Index(name = "idx_symbol_period", columnList = "symbol,period"),
+                @Index(name = "idx_timestamp", columnList = "timestamp")
+        },
+        uniqueConstraints = {
+                @UniqueConstraint(
+                        name = "uk_candle_symbol_period_timestamp",
+                        columnNames = {"symbol", "period", "timestamp"}
+                )
+        }
+)
 @Getter
 @Setter
 @NoArgsConstructor

@@ -1,5 +1,6 @@
 package com.example.cryptobot.portfolio;
 
+import com.example.cryptobot.account.Account;
 import com.example.cryptobot.common.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -24,8 +25,11 @@ public class PositionService {
     }
 
     private Position createNewPosition(Long accountId, String symbol) {
+        Account account = new Account();
+        account.setId(accountId);
+
         Position position = Position.builder()
-                .account(new com.example.cryptobot.account.Account())
+                .account(account)
                 .symbol(symbol)
                 .quantity(BigDecimal.ZERO)
                 .avgBuyPrice(BigDecimal.ZERO)
@@ -34,14 +38,16 @@ public class PositionService {
                 .unrealizedProfitRate(BigDecimal.ZERO)
                 .status(Position.PositionStatus.CLOSED)
                 .build();
-        position.getAccount().setId(accountId);
+
         return positionRepository.save(position);
     }
 
+    @Transactional(readOnly = true)
     public List<Position> getPositions(Long accountId) {
         return positionRepository.findByAccountId(accountId);
     }
 
+    @Transactional(readOnly = true)
     public List<Position> getOpenPositions(Long accountId) {
         return positionRepository.findByAccountIdAndStatus(accountId, Position.PositionStatus.OPEN);
     }
@@ -58,14 +64,13 @@ public class PositionService {
         position.setAvgBuyPrice(safeAvgPrice);
         position.setCurrentPrice(safeCurrentPrice);
 
-        // 전량 청산 또는 0 이하 수량이면 바로 CLOSED 처리
         if (safeQuantity.compareTo(BigDecimal.ZERO) <= 0) {
             position.setQuantity(BigDecimal.ZERO);
             position.setUnrealizedProfit(BigDecimal.ZERO);
             position.setUnrealizedProfitRate(BigDecimal.ZERO);
             position.setStatus(Position.PositionStatus.CLOSED);
-            positionRepository.save(position);
 
+            positionRepository.save(position);
             log.info("Position closed: positionId={}", positionId);
             return;
         }
@@ -86,6 +91,7 @@ public class PositionService {
         position.setStatus(Position.PositionStatus.OPEN);
 
         positionRepository.save(position);
-        log.info("Position updated: positionId={}, quantity={}, avgPrice={}", positionId, safeQuantity, safeAvgPrice);
+        log.info("Position updated: positionId={}, quantity={}, avgPrice={}",
+                positionId, safeQuantity, safeAvgPrice);
     }
 }

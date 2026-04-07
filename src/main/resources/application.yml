@@ -76,3 +76,13 @@ management:
 jwt:
   secret: ${JWT_SECRET}
   expiration: 86400000
+
+bot:
+  trading:
+    mode: LIVE
+    top-coin-count: 5
+    order-amount: 10000
+    take-profit-rate: 3.0
+    stop-loss-rate: -2.0
+    reentry-cooldown-minutes: 10
+    ai-enabled: false

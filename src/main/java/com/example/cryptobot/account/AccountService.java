@@ -1,7 +1,7 @@
 package com.example.cryptobot.account;
 
 import com.example.cryptobot.common.exception.BusinessException;
-import com.example.cryptobot.exchange.upbit.service.UpbitAccountService;
+import com.example.cryptobot.upbit.service.UpbitAccountService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
