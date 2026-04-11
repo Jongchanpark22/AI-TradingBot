@@ -1,9 +1,8 @@
 # Gradle
 .gradle/
 build/
-gradle/
-gradlew
-gradlew.bat
+# NOTE: the Gradle wrapper (gradle/wrapper, gradlew, gradlew.bat) MUST be tracked.
+# CI runs `./gradlew` and reproducible builds depend on the wrapper being in the repo.
 
 # IDE
 .idea/
@@ -38,5 +37,5 @@ out/
 # Application specific
 secrets/
 temp/
-cache/
+# cache/ 제거됨 - src/main/java/com/example/cryptobot/common/cache/ 는 추적 필요
 
