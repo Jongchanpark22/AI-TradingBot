@@ -1,13 +1,13 @@
 spring:
   application:
     name: crypto-trading-bot
+
   jpa:
     hibernate:
-      ddl-auto: create
+      ddl-auto: update
     show-sql: true
     properties:
       hibernate:
-        dialect: org.hibernate.dialect.MySQL8Dialect
         format_sql: true
         use_sql_comments: true
 
@@ -31,6 +31,29 @@ spring:
         type: redis
         redis:
           time-to-live: 10m  # 기본 TTL: 10분
+
+  cache:
+    type: redis
+    redis:
+      time-to-live: 10m
+
+upbit:
+  api:
+    base-url: https://api.upbit.com
+    timeout-ms: 10000
+    access-key: ${UPBIT_ACCESS_KEY}
+    secret-key: ${UPBIT_SECRET_KEY}
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+    doc-expansion: list
+    display-request-duration: true
+  packages-to-scan: com.example.cryptobot
 
 server:
   port: 8080

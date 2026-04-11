@@ -1,10 +1,13 @@
 package com.example.cryptobot.order;
 
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 @RestController
@@ -28,7 +31,10 @@ public class OrderController {
     }
 
     @GetMapping("/account/{accountId}/symbol/{symbol}")
-    public ResponseEntity<List<Order>> getOrdersBySymbol(@PathVariable Long accountId, @PathVariable String symbol) {
+    public ResponseEntity<List<Order>> getOrdersBySymbol(
+            @PathVariable Long accountId,
+            @PathVariable String symbol
+    ) {
         List<Order> orders = orderService.getOrdersBySymbol(accountId, symbol);
         return ResponseEntity.ok(orders);
     }
@@ -36,24 +42,24 @@ public class OrderController {
     @PostMapping
     public ResponseEntity<Order> createOrder(@RequestBody CreateOrderRequest request) {
         Order order = orderService.createOrder(
-                request.accountId,
-                request.symbol,
-                request.type,
-                request.side,
-                request.price,
-                request.quantity
+                request.getAccountId(),
+                request.getSymbol(),
+                request.getType(),
+                request.getSide(),
+                request.getPrice(),
+                request.getQuantity()
         );
         return ResponseEntity.ok(order);
     }
 
+    @Getter
+    @Setter
     public static class CreateOrderRequest {
-        public Long accountId;
-        public String symbol;
-        public Order.OrderType type;
-        public Order.OrderSide side;
-        public Double price;
-        public Double quantity;
+        private Long accountId;
+        private String symbol;
+        private Order.OrderType type;
+        private Order.OrderSide side;
+        private BigDecimal price;
+        private BigDecimal quantity;
     }
-
 }
-

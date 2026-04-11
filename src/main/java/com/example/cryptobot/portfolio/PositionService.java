@@ -6,6 +6,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.List;
 
 @Service
@@ -25,11 +27,11 @@ public class PositionService {
         Position position = Position.builder()
                 .account(new com.example.cryptobot.account.Account())
                 .symbol(symbol)
-                .quantity(0.0)
-                .avgBuyPrice(0.0)
-                .currentPrice(0.0)
-                .unrealizedProfit(0.0)
-                .unrealizedProfitRate(0.0)
+                .quantity(BigDecimal.ZERO)
+                .avgBuyPrice(BigDecimal.ZERO)
+                .currentPrice(BigDecimal.ZERO)
+                .unrealizedProfit(BigDecimal.ZERO)
+                .unrealizedProfitRate(BigDecimal.ZERO)
                 .status(Position.PositionStatus.CLOSED)
                 .build();
         position.getAccount().setId(accountId);
@@ -44,25 +46,46 @@ public class PositionService {
         return positionRepository.findByAccountIdAndStatus(accountId, Position.PositionStatus.OPEN);
     }
 
-    public void updatePosition(Long positionId, Double quantity, Double avgPrice, Double currentPrice) {
+    public void updatePosition(Long positionId, BigDecimal quantity, BigDecimal avgPrice, BigDecimal currentPrice) {
         Position position = positionRepository.findById(positionId)
                 .orElseThrow(() -> new BusinessException("POSITION_NOT_FOUND", "포지션을 찾을 수 없습니다."));
-        
-        position.setQuantity(quantity);
-        position.setAvgBuyPrice(avgPrice);
-        position.setCurrentPrice(currentPrice);
-        
-        // 미실현 손익 계산
-        Double unrealizedProfit = (currentPrice - avgPrice) * quantity;
-        Double unrealizedProfitRate = avgPrice > 0 ? (unrealizedProfit / (avgPrice * quantity)) * 100 : 0;
-        
+
+        BigDecimal safeQuantity = quantity != null ? quantity : BigDecimal.ZERO;
+        BigDecimal safeAvgPrice = avgPrice != null ? avgPrice : BigDecimal.ZERO;
+        BigDecimal safeCurrentPrice = currentPrice != null ? currentPrice : BigDecimal.ZERO;
+
+        position.setQuantity(safeQuantity);
+        position.setAvgBuyPrice(safeAvgPrice);
+        position.setCurrentPrice(safeCurrentPrice);
+
+        // 전량 청산 또는 0 이하 수량이면 바로 CLOSED 처리
+        if (safeQuantity.compareTo(BigDecimal.ZERO) <= 0) {
+            position.setQuantity(BigDecimal.ZERO);
+            position.setUnrealizedProfit(BigDecimal.ZERO);
+            position.setUnrealizedProfitRate(BigDecimal.ZERO);
+            position.setStatus(Position.PositionStatus.CLOSED);
+            positionRepository.save(position);
+
+            log.info("Position closed: positionId={}", positionId);
+            return;
+        }
+
+        BigDecimal unrealizedProfit = safeCurrentPrice.subtract(safeAvgPrice).multiply(safeQuantity);
+
+        BigDecimal baseAmount = safeAvgPrice.multiply(safeQuantity);
+        BigDecimal unrealizedProfitRate = BigDecimal.ZERO;
+
+        if (baseAmount.compareTo(BigDecimal.ZERO) > 0) {
+            unrealizedProfitRate = unrealizedProfit
+                    .divide(baseAmount, 4, RoundingMode.HALF_UP)
+                    .multiply(new BigDecimal("100"));
+        }
+
         position.setUnrealizedProfit(unrealizedProfit);
         position.setUnrealizedProfitRate(unrealizedProfitRate);
-        position.setStatus(quantity > 0 ? Position.PositionStatus.OPEN : Position.PositionStatus.CLOSED);
-        
+        position.setStatus(Position.PositionStatus.OPEN);
+
         positionRepository.save(position);
-        log.info("Position updated: positionId={}, quantity={}, avgPrice={}", positionId, quantity, avgPrice);
+        log.info("Position updated: positionId={}, quantity={}, avgPrice={}", positionId, safeQuantity, safeAvgPrice);
     }
-
 }
-
