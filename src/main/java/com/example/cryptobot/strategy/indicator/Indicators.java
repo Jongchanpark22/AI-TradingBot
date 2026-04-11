@@ -62,9 +62,9 @@ public final class Indicators {
     public static double trueRange(List<Candle> candles, int i) {
         Candle cur = candles.get(i);
         Candle prev = candles.get(i - 1);
-        double hl = cur.getHighPrice() - cur.getLowPrice();
-        double hc = Math.abs(cur.getHighPrice() - prev.getClosePrice());
-        double lc = Math.abs(cur.getLowPrice() - prev.getClosePrice());
+        double hl = high(cur) - low(cur);
+        double hc = Math.abs(high(cur) - close(prev));
+        double lc = Math.abs(low(cur) - close(prev));
         return Math.max(hl, Math.max(hc, lc));
     }
 
@@ -178,14 +178,14 @@ public final class Indicators {
     }
 
     private static double plusDM(List<Candle> c, int i) {
-        double up = c.get(i).getHighPrice() - c.get(i - 1).getHighPrice();
-        double dn = c.get(i - 1).getLowPrice() - c.get(i).getLowPrice();
+        double up = high(c.get(i)) - high(c.get(i - 1));
+        double dn = low(c.get(i - 1)) - low(c.get(i));
         return (up > dn && up > 0) ? up : 0;
     }
 
     private static double minusDM(List<Candle> c, int i) {
-        double up = c.get(i).getHighPrice() - c.get(i - 1).getHighPrice();
-        double dn = c.get(i - 1).getLowPrice() - c.get(i).getLowPrice();
+        double up = high(c.get(i)) - high(c.get(i - 1));
+        double dn = low(c.get(i - 1)) - low(c.get(i));
         return (dn > up && dn > 0) ? dn : 0;
     }
 
@@ -236,8 +236,8 @@ public final class Indicators {
         double hi = Double.NEGATIVE_INFINITY;
         double lo = Double.POSITIVE_INFINITY;
         for (int i = candles.size() - period; i < candles.size(); i++) {
-            hi = Math.max(hi, candles.get(i).getHighPrice());
-            lo = Math.min(lo, candles.get(i).getLowPrice());
+            hi = Math.max(hi, high(candles.get(i)));
+            lo = Math.min(lo, low(candles.get(i)));
         }
         return new DonchianChannel(hi, (hi + lo) / 2.0, lo);
     }
@@ -251,8 +251,8 @@ public final class Indicators {
         double lo = Double.POSITIVE_INFINITY;
         int end = candles.size() - 1; // exclude last
         for (int i = end - period; i < end; i++) {
-            hi = Math.max(hi, candles.get(i).getHighPrice());
-            lo = Math.min(lo, candles.get(i).getLowPrice());
+            hi = Math.max(hi, high(candles.get(i)));
+            lo = Math.min(lo, low(candles.get(i)));
         }
         return new DonchianChannel(hi, (hi + lo) / 2.0, lo);
     }
@@ -283,29 +283,29 @@ public final class Indicators {
         for (int i = period; i < n; i++) {
             Candle c = candles.get(i);
             double a = atr.get(i);
-            double hl2 = (c.getHighPrice() + c.getLowPrice()) / 2.0;
+            double hl2 = (high(c) + low(c)) / 2.0;
             double basicUpper = hl2 + multiplier * a;
             double basicLower = hl2 - multiplier * a;
 
             if (i == period) {
                 finalUpper = basicUpper;
                 finalLower = basicLower;
-                int dir0 = c.getClosePrice() > basicUpper ? 1 : -1;
+                int dir0 = close(c) > basicUpper ? 1 : -1;
                 double st0 = dir0 == 1 ? finalLower : finalUpper;
                 out.set(i, new SupertrendPoint(st0, dir0));
                 continue;
             }
 
-            double prevClose = candles.get(i - 1).getClosePrice();
+            double prevClose = close(candles.get(i - 1));
             finalUpper = (basicUpper < finalUpper || prevClose > finalUpper) ? basicUpper : finalUpper;
             finalLower = (basicLower > finalLower || prevClose < finalLower) ? basicLower : finalLower;
 
             SupertrendPoint prev = out.get(i - 1);
             int dir;
             if (prev.direction() == -1) {
-                dir = c.getClosePrice() > finalUpper ? 1 : -1;
+                dir = close(c) > finalUpper ? 1 : -1;
             } else {
-                dir = c.getClosePrice() < finalLower ? -1 : 1;
+                dir = close(c) < finalLower ? -1 : 1;
             }
             double st = dir == 1 ? finalLower : finalUpper;
             out.set(i, new SupertrendPoint(st, dir));
@@ -326,14 +326,20 @@ public final class Indicators {
     /** Extract closing prices from a candle list. */
     public static List<Double> closes(List<Candle> candles) {
         List<Double> out = new ArrayList<>(candles.size());
-        for (Candle c : candles) out.add(c.getClosePrice());
+        for (Candle c : candles) out.add(close(c));
         return out;
     }
 
     /** Extract volumes from a candle list. */
     public static List<Double> volumes(List<Candle> candles) {
         List<Double> out = new ArrayList<>(candles.size());
-        for (Candle c : candles) out.add(c.getVolume());
+        for (Candle c : candles) out.add(c.getVolume() == null ? 0.0 : c.getVolume().doubleValue());
         return out;
     }
+
+    // BigDecimal → primitive accessors. Indicators are happiest in double space;
+    // entities persist BigDecimal for monetary precision.
+    private static double high(Candle c)  { return c.getHighPrice().doubleValue(); }
+    private static double low(Candle c)   { return c.getLowPrice().doubleValue(); }
+    private static double close(Candle c) { return c.getClosePrice().doubleValue(); }
 }

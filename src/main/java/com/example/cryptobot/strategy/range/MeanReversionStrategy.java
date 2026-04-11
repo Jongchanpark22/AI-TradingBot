@@ -67,18 +67,18 @@ public final class MeanReversionStrategy implements TradingStrategy {
         // 1) Lower band pierce
         Indicators.BollingerBand bb = Indicators.bollinger(closes, bbPeriod, bbStdDev);
         if (Double.isNaN(bb.lower())) return Optional.empty();
-        if (last.getLowPrice() > bb.lower()) return Optional.empty();
+        if (last.getLowPrice().doubleValue() > bb.lower()) return Optional.empty();
 
         // 2) RSI oversold
         double rsi = Indicators.rsi(closes, rsiPeriod);
         if (rsi >= rsiOversold) return Optional.empty();
 
         // 3) Bullish reversal candle (close > open)
-        if (last.getClosePrice() <= last.getOpenPrice()) return Optional.empty();
+        if (last.getClosePrice().compareTo(last.getOpenPrice()) <= 0) return Optional.empty();
 
         // 4) Risk-managed plan at the close
         double atr = Indicators.atr(candles, atrPeriod);
-        EntryPlan plan = risk.planLong(equity, last.getClosePrice(), atr);
+        EntryPlan plan = risk.planLong(equity, last.getClosePrice().doubleValue(), atr);
         return plan.isExecutable() ? Optional.of(plan) : Optional.empty();
     }
 }

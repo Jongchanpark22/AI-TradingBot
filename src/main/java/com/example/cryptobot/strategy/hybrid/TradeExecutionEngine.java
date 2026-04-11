@@ -9,8 +9,11 @@ import com.example.cryptobot.strategy.risk.EntryPlan;
 import com.example.cryptobot.strategy.risk.RiskManager;
 import com.example.cryptobot.strategy.risk.TrailingDecision;
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.List;
 import java.util.Optional;
 
@@ -244,11 +247,13 @@ public class TradeExecutionEngine {
             return null;
         }
         double atr = Indicators.atr(recentCandles, atrPeriod);
-        EntryPlan plan = riskManager.planLong(account.getTotalBalance(), currentPrice, atr);
+        double totalBalance = toDouble(account.getTotalBalance());
+        double availableBalance = toDouble(account.getAvailableBalance());
+        EntryPlan plan = riskManager.planLong(totalBalance, currentPrice, atr);
         if (!plan.isExecutable()) return null;
-        if (plan.notional() > account.getAvailableBalance()) {
+        if (plan.notional() > availableBalance) {
             // not enough cash to fund the planned size — scale down to available
-            double cappedQty = account.getAvailableBalance() / currentPrice;
+            double cappedQty = availableBalance / currentPrice;
             if (cappedQty <= 0) return null;
             plan = new EntryPlan(cappedQty, currentPrice, plan.stopLossPrice(),
                     plan.takeProfitPrice(), plan.riskAmount(), plan.rewardAmount(),
@@ -260,15 +265,19 @@ public class TradeExecutionEngine {
                 .symbol(symbol)
                 .type(Order.OrderType.LIMIT)
                 .side(Order.OrderSide.BUY)
-                .price(currentPrice)
-                .quantity(plan.quantity())
+                .price(BigDecimal.valueOf(currentPrice))
+                .quantity(BigDecimal.valueOf(plan.quantity()))
                 .status(Order.OrderStatus.PENDING)
-                .totalAmount(plan.notional())
+                .totalAmount(BigDecimal.valueOf(plan.notional()))
                 .remark(String.format(
                         "EntryATR sl=%.2f tp=%.2f risk=%.2f rr=%.2f",
                         plan.stopLossPrice(), plan.takeProfitPrice(),
                         plan.riskAmount(), plan.riskRewardRatio()))
                 .build();
+    }
+
+    private static double toDouble(BigDecimal v) {
+        return v == null ? 0.0 : v.doubleValue();
     }
 
     /**
@@ -290,8 +299,9 @@ public class TradeExecutionEngine {
         }
         Double stop = position.getCurrentStopLoss();
         Double initialStop = position.getInitialStopLoss();
-        Double entry = position.getAvgBuyPrice();
-        if (stop == null || initialStop == null || entry == null) return null;
+        BigDecimal entryBd = position.getAvgBuyPrice();
+        if (stop == null || initialStop == null || entryBd == null) return null;
+        double entry = entryBd.doubleValue();
 
         double highest = position.getHighestPriceSinceEntry() == null
                 ? entry
@@ -315,7 +325,7 @@ public class TradeExecutionEngine {
                     .symbol(position.getSymbol())
                     .type(Order.OrderType.MARKET)
                     .side(Order.OrderSide.SELL)
-                    .price(currentPrice)
+                    .price(BigDecimal.valueOf(currentPrice))
                     .quantity(position.getQuantity())
                     .status(Order.OrderStatus.PENDING)
                     .remark("StopHit:" + d.reason())
@@ -328,8 +338,8 @@ public class TradeExecutionEngine {
                     .symbol(position.getSymbol())
                     .type(Order.OrderType.MARKET)
                     .side(Order.OrderSide.SELL)
-                    .price(currentPrice)
-                    .quantity(position.getQuantity() / 2.0)
+                    .price(BigDecimal.valueOf(currentPrice))
+                    .quantity(position.getQuantity().divide(BigDecimal.valueOf(2), RoundingMode.DOWN))
                     .status(Order.OrderStatus.PENDING)
                     .remark("PartialExit:+1R")
                     .build();
@@ -338,28 +348,21 @@ public class TradeExecutionEngine {
     }
 
     // ====== 거래 매개변수 ======
-    
-    @lombok.Builder
-    @lombok.Data
+
+    @Builder
+    @Data
     public static class TradingParameters {
-        @lombok.Builder.Default
-        private double riskPerTrade = 0.03;              // 1회 거래 시 계정의 3% 투자
-        @lombok.Builder.Default
-        private double stopLossPercent = 2.5;            // 손절: 진입가 대비 2.5%
-        @lombok.Builder.Default
-        private double takeProfitPercent = 6.75;         // 익절: 진입가 대비 6.75%
-        @lombok.Builder.Default
-        private double maxDailyLoss = 0.10;              // 1일 최대손실: 계정의 10%
-        @lombok.Builder.Default
-        private int maxOpenPositions = 3;                // 최대 동시 포지션: 3개
-        @lombok.Builder.Default
-        private int minVolumeRatio = 130;                // 최소 거래량 비율: 130% (평균 대비)
-        @lombok.Builder.Default
-        private boolean useStopLoss = true;              // 손절 활성화
-        @lombok.Builder.Default
-        private boolean useTakeProfit = true;            // 익절 활성화
-    }
-}
+        @Builder.Default
+        private BigDecimal riskPerTrade = new BigDecimal("0.03");
+
+        @Builder.Default
+        private BigDecimal stopLossPercent = new BigDecimal("2.5");
+
+        @Builder.Default
+        private BigDecimal takeProfitPercent = new BigDecimal("6.75");
+
+        @Builder.Default
+        private BigDecimal maxDailyLoss = new BigDecimal("10.0");
 
         @Builder.Default
         private int maxOpenPositions = 3;

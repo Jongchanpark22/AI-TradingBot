@@ -29,8 +29,12 @@ class MeanReversionStrategyTest {
         return Candle.builder()
                 .symbol("TEST").period(Candle.CandlePeriod.ONE_HOUR)
                 .timestamp(LocalDateTime.now())
-                .openPrice(o).highPrice(h).lowPrice(l).closePrice(c)
-                .volume(1000.0).quoteAssetVolume(1000.0 * c)
+                .openPrice(java.math.BigDecimal.valueOf(o))
+                .highPrice(java.math.BigDecimal.valueOf(h))
+                .lowPrice(java.math.BigDecimal.valueOf(l))
+                .closePrice(java.math.BigDecimal.valueOf(c))
+                .volume(java.math.BigDecimal.valueOf(1000.0))
+                .quoteAssetVolume(java.math.BigDecimal.valueOf(1000.0 * c))
                 .build();
     }
 
@@ -72,10 +76,10 @@ class MeanReversionStrategyTest {
         List<Candle> c = overSoldThenGreen();
         Candle last = c.get(c.size() - 1);
         c.set(c.size() - 1, bar(
-                last.getClosePrice() + 0.5,  // open above close -> red
-                last.getHighPrice(),
-                last.getLowPrice(),
-                last.getClosePrice()));
+                last.getClosePrice().doubleValue() + 0.5,  // open above close -> red
+                last.getHighPrice().doubleValue(),
+                last.getLowPrice().doubleValue(),
+                last.getClosePrice().doubleValue()));
         assertTrue(strategy.evaluate(c, 10_000, risk).isEmpty());
     }
 

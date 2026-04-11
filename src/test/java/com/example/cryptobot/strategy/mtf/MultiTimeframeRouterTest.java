@@ -34,8 +34,12 @@ class MultiTimeframeRouterTest {
         return Candle.builder()
                 .symbol("TEST").period(Candle.CandlePeriod.ONE_HOUR)
                 .timestamp(LocalDateTime.now())
-                .openPrice(o).highPrice(h).lowPrice(l).closePrice(c)
-                .volume(v).quoteAssetVolume(v * c)
+                .openPrice(java.math.BigDecimal.valueOf(o))
+                .highPrice(java.math.BigDecimal.valueOf(h))
+                .lowPrice(java.math.BigDecimal.valueOf(l))
+                .closePrice(java.math.BigDecimal.valueOf(c))
+                .volume(java.math.BigDecimal.valueOf(v))
+                .quoteAssetVolume(java.math.BigDecimal.valueOf(v * c))
                 .build();
     }
 

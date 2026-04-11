@@ -54,7 +54,7 @@ public final class HigherTimeframeFilter {
         // 1. daily EMA(trendEmaPeriod) trend filter
         if (dailyCandles != null && dailyCandles.size() >= trendEmaPeriod) {
             double ema = Indicators.ema(Indicators.closes(dailyCandles), trendEmaPeriod);
-            double lastClose = dailyCandles.get(dailyCandles.size() - 1).getClosePrice();
+            double lastClose = dailyCandles.get(dailyCandles.size() - 1).getClosePrice().doubleValue();
             if (!Double.isNaN(ema) && lastClose < ema) {
                 return Decision.block("daily close " + lastClose + " < EMA" + trendEmaPeriod + " " + ema);
             }
