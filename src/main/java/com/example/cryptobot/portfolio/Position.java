@@ -42,6 +42,35 @@ public class Position extends BaseEntity {
     @Column(columnDefinition = "DECIMAL(19,2) DEFAULT 0")
     private BigDecimal unrealizedProfitRate;
 
+    // ====== Risk-management state (Phase 2) ======
+    // Populated by RiskManager and updated by the trailing/partial-exit loop.
+    // All nullable so legacy positions remain valid.
+
+    /** Initial protective stop set at entry. */
+    @Column(columnDefinition = "DECIMAL(19,2)")
+    private Double initialStopLoss;
+
+    /** Currently active stop, monotonically non-decreasing for longs. */
+    @Column(columnDefinition = "DECIMAL(19,2)")
+    private Double currentStopLoss;
+
+    /** Original take-profit target. */
+    @Column(columnDefinition = "DECIMAL(19,2)")
+    private Double takeProfitPrice;
+
+    /** Highest price observed since the position opened, used for chandelier exit. */
+    @Column(columnDefinition = "DECIMAL(19,2)")
+    private Double highestPriceSinceEntry;
+
+    /** ATR sampled at entry, kept for diagnostics / R-multiple math. */
+    @Column(columnDefinition = "DECIMAL(19,8)")
+    private Double atrAtEntry;
+
+    /** Set to true once the +1R partial exit has fired. */
+    @Column(nullable = false)
+    @Builder.Default
+    private Boolean partialExitDone = false;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private PositionStatus status;
