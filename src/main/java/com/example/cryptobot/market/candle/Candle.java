@@ -4,12 +4,13 @@ import com.example.cryptobot.common.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "candles", indexes = {
-    @Index(name = "idx_symbol_period", columnList = "symbol,period"),
-    @Index(name = "idx_timestamp", columnList = "timestamp")
+        @Index(name = "idx_symbol_period", columnList = "symbol,period"),
+        @Index(name = "idx_timestamp", columnList = "timestamp")
 })
 @Getter
 @Setter
@@ -32,27 +33,25 @@ public class Candle extends BaseEntity {
     @Column(nullable = false)
     private LocalDateTime timestamp;
 
-    @Column(columnDefinition = "DECIMAL(19,2)")
-    private Double openPrice;
+    @Column(precision = 19, scale = 2)
+    private BigDecimal openPrice;
 
-    @Column(columnDefinition = "DECIMAL(19,2)")
-    private Double highPrice;
+    @Column(precision = 19, scale = 2)
+    private BigDecimal highPrice;
 
-    @Column(columnDefinition = "DECIMAL(19,2)")
-    private Double lowPrice;
+    @Column(precision = 19, scale = 2)
+    private BigDecimal lowPrice;
 
-    @Column(columnDefinition = "DECIMAL(19,2)")
-    private Double closePrice;
+    @Column(precision = 19, scale = 2)
+    private BigDecimal closePrice;
 
-    @Column(columnDefinition = "DECIMAL(19,8)")
-    private Double volume;
+    @Column(precision = 19, scale = 8)
+    private BigDecimal volume;
 
-    @Column(columnDefinition = "DECIMAL(19,2)")
-    private Double quoteAssetVolume;
+    @Column(precision = 19, scale = 2)
+    private BigDecimal quoteAssetVolume;
 
     public enum CandlePeriod {
         ONE_MIN, FIVE_MIN, FIFTEEN_MIN, THIRTY_MIN, ONE_HOUR, FOUR_HOUR, ONE_DAY, ONE_WEEK
     }
-
 }
-
