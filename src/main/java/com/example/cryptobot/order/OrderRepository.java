@@ -14,5 +14,10 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     List<Order> findByAccountIdAndStatus(Long accountId, Order.OrderStatus status);
     List<Order> findByAccountIdAndCreatedAtAfter(Long accountId, LocalDateTime dateTime);
     Order findByExchangeOrderId(String exchangeOrderId);
+    List<Order> findByAccountAndSymbolAndStatusIn(
+            Account account,
+            String symbol,
+            List<Order.OrderStatus> statuses
+    );
 }
 

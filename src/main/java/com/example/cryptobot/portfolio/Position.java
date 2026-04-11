@@ -5,6 +5,8 @@ import com.example.cryptobot.common.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.math.BigDecimal;
+
 @Entity
 @Table(name = "positions")
 @Getter
@@ -23,22 +25,22 @@ public class Position extends BaseEntity {
     private Account account;
 
     @Column(nullable = false)
-    private String symbol; // BTC, ETH, etc.
+    private String symbol;
 
     @Column(columnDefinition = "DECIMAL(19,8) DEFAULT 0")
-    private Double quantity;
+    private BigDecimal quantity;
 
     @Column(columnDefinition = "DECIMAL(19,2) DEFAULT 0")
-    private Double avgBuyPrice;
+    private BigDecimal avgBuyPrice;
 
     @Column(columnDefinition = "DECIMAL(19,2) DEFAULT 0")
-    private Double currentPrice;
+    private BigDecimal currentPrice;
 
     @Column(columnDefinition = "DECIMAL(19,2) DEFAULT 0")
-    private Double unrealizedProfit;
+    private BigDecimal unrealizedProfit;
 
     @Column(columnDefinition = "DECIMAL(19,2) DEFAULT 0")
-    private Double unrealizedProfitRate;
+    private BigDecimal unrealizedProfitRate;
 
     // ====== Risk-management state (Phase 2) ======
     // Populated by RiskManager and updated by the trailing/partial-exit loop.

@@ -4,10 +4,10 @@ import com.example.cryptobot.common.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.math.BigDecimal;
+
 @Entity
-@Table(name = "accounts", uniqueConstraints = {
-    @UniqueConstraint(columnNames = {"user_id", "exchange_type"})
-})
+@Table(name = "accounts")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -19,35 +19,18 @@ public class Account extends BaseEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "user_id")
-    private User user;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private ExchangeType exchangeType;
-
-    @Column(nullable = false)
-    private String apiKey;
-
-    @Column(nullable = false)
-    private String secretKey;
-
     @Column(nullable = false)
     private Boolean isActive;
 
-    @Column(columnDefinition = "DECIMAL(19,2) DEFAULT 0")
-    private Double totalBalance;
+    @Builder.Default
+    @Column(precision = 19, scale = 2, nullable = false)
+    private BigDecimal totalBalance = BigDecimal.ZERO;
 
-    @Column(columnDefinition = "DECIMAL(19,2) DEFAULT 0")
-    private Double availableBalance;
+    @Builder.Default
+    @Column(precision = 19, scale = 2, nullable = false)
+    private BigDecimal availableBalance = BigDecimal.ZERO;
 
-    @Column(columnDefinition = "DECIMAL(19,2) DEFAULT 0")
-    private Double lockedBalance;
-
-    public enum ExchangeType {
-        UPBIT, BITHUMB
-    }
-
+    @Builder.Default
+    @Column(precision = 19, scale = 2, nullable = false)
+    private BigDecimal lockedBalance = BigDecimal.ZERO;
 }
-
