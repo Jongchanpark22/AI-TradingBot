@@ -3,6 +3,7 @@ package com.example.cryptobot.strategy.indicator;
 import com.example.cryptobot.market.candle.Candle;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -18,12 +19,12 @@ class IndicatorsTest {
                 .symbol("TEST")
                 .period(Candle.CandlePeriod.ONE_HOUR)
                 .timestamp(LocalDateTime.now())
-                .openPrice(open)
-                .highPrice(high)
-                .lowPrice(low)
-                .closePrice(close)
-                .volume(vol)
-                .quoteAssetVolume(vol * close)
+                .openPrice(BigDecimal.valueOf(open))
+                .highPrice(BigDecimal.valueOf(high))
+                .lowPrice(BigDecimal.valueOf(low))
+                .closePrice(BigDecimal.valueOf(close))
+                .volume(BigDecimal.valueOf(vol))
+                .quoteAssetVolume(BigDecimal.valueOf(vol * close))
                 .build();
     }
 
@@ -168,8 +169,8 @@ class IndicatorsTest {
         double expectedHigh = Double.NEGATIVE_INFINITY;
         double expectedLow = Double.POSITIVE_INFINITY;
         for (int i = c.size() - 20; i < c.size(); i++) {
-            expectedHigh = Math.max(expectedHigh, c.get(i).getHighPrice());
-            expectedLow = Math.min(expectedLow, c.get(i).getLowPrice());
+            expectedHigh = Math.max(expectedHigh, c.get(i).getHighPrice().doubleValue());
+            expectedLow = Math.min(expectedLow, c.get(i).getLowPrice().doubleValue());
         }
         assertEquals(expectedHigh, d.upper(), 1e-9);
         assertEquals(expectedLow, d.lower(), 1e-9);
@@ -180,7 +181,7 @@ class IndicatorsTest {
         List<Candle> c = uptrend(30);
         Indicators.DonchianChannel d = Indicators.donchianExcludingLast(c, 20);
         // The latest bar's high (highest of all) must not be considered
-        assertTrue(d.upper() < c.get(c.size() - 1).getHighPrice());
+        assertTrue(d.upper() < c.get(c.size() - 1).getHighPrice().doubleValue());
     }
 
     // ---- Supertrend ------------------------------------------------------

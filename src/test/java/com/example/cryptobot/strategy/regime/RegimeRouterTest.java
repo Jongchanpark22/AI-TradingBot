@@ -29,8 +29,12 @@ class RegimeRouterTest {
                 .symbol("TEST")
                 .period(Candle.CandlePeriod.ONE_HOUR)
                 .timestamp(LocalDateTime.now())
-                .openPrice(o).highPrice(h).lowPrice(l).closePrice(c)
-                .volume(v).quoteAssetVolume(v * c)
+                .openPrice(java.math.BigDecimal.valueOf(o))
+                .highPrice(java.math.BigDecimal.valueOf(h))
+                .lowPrice(java.math.BigDecimal.valueOf(l))
+                .closePrice(java.math.BigDecimal.valueOf(c))
+                .volume(java.math.BigDecimal.valueOf(v))
+                .quoteAssetVolume(java.math.BigDecimal.valueOf(v * c))
                 .build();
     }
 
@@ -170,7 +174,7 @@ class RegimeRouterTest {
                         .timestamp(last.getTimestamp())
                         .openPrice(last.getOpenPrice()).highPrice(last.getHighPrice())
                         .lowPrice(last.getLowPrice()).closePrice(last.getClosePrice())
-                        .volume(900.0).quoteAssetVolume(last.getQuoteAssetVolume())
+                        .volume(java.math.BigDecimal.valueOf(900.0)).quoteAssetVolume(last.getQuoteAssetVolume())
                         .build());
         RegimeRouter.RoutedDecision d = router.decide(c, 10_000, risk);
         assertEquals(MarketRegime.TRENDING_UP, d.regime());

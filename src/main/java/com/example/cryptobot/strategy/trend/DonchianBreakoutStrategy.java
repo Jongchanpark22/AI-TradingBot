@@ -76,7 +76,7 @@ public final class DonchianBreakoutStrategy implements TradingStrategy {
         if (candles == null || candles.size() < needed) return Optional.empty();
 
         Candle last = candles.get(candles.size() - 1);
-        double close = last.getClosePrice();
+        double close = last.getClosePrice().doubleValue();
 
         // 1) Donchian breakout (excluding current bar)
         Indicators.DonchianChannel d = Indicators.donchianExcludingLast(candles, donchianPeriod);
@@ -90,7 +90,7 @@ public final class DonchianBreakoutStrategy implements TradingStrategy {
         List<Double> vols = Indicators.volumes(candles);
         double volAvg = Indicators.sma(vols, volumeAvgPeriod);
         if (Double.isNaN(volAvg) || volAvg <= 0) return Optional.empty();
-        if (last.getVolume() < volAvg * minVolumeRatio) return Optional.empty();
+        if (last.getVolume().doubleValue() < volAvg * minVolumeRatio) return Optional.empty();
 
         // 4) Hand off to risk manager
         double atr = Indicators.atr(candles, atrPeriod);
