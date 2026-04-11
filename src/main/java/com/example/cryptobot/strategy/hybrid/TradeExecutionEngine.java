@@ -2,91 +2,120 @@ package com.example.cryptobot.strategy.hybrid;
 
 import com.example.cryptobot.account.Account;
 import com.example.cryptobot.order.Order;
-import com.example.cryptobot.market.candle.Candle;
-import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
-import java.util.Optional;
 
-/**
- * 거래 실행 엔진
- * - 진입 신호 → 매수 주문 생성
- * - 청산 신호 → 매도 주문 생성
- * - 손절/익절 자동 관리
- */
-@Data
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+
 public class TradeExecutionEngine {
 
-    /**
-     * 매수 신호에 따른 주문 생성
-     * 
-     * @param account 거래 계정
-     * @param symbol 암호화폐 심볼
-     * @param currentPrice 현재 가격
-     * @param signal 거래 신호
-     * @return 생성된 주문
-     */
     public Order executeBySignal(
             Account account,
             String symbol,
-            double currentPrice,
+            BigDecimal currentPrice,
             HybridSignalAnalyzer.TradeSignal signal,
             TradingParameters params) {
-        
-        // 신호 강도에 따른 주문 수량 결정
-        double orderAmount = calculateOrderAmount(account, signal, params);
-        
-        if (orderAmount <= 0) {
+
+        if (account == null || symbol == null || symbol.isBlank() || signal == null || params == null) {
             return null;
         }
-        
-        // 매수 주문 생성
-        Order order = Order.builder()
+
+        BigDecimal orderAmount = calculateOrderAmount(account, signal, params);
+        if (orderAmount == null || orderAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            return null;
+        }
+
+        if (currentPrice == null || currentPrice.compareTo(BigDecimal.ZERO) <= 0) {
+            return null;
+        }
+
+        BigDecimal quantity = orderAmount.divide(currentPrice, 8, RoundingMode.DOWN);
+
+        // 소수점 8자리 내림 후 수량이 0이면 유효하지 않은 주문이므로 생성하지 않음
+        if (quantity.compareTo(BigDecimal.ZERO) <= 0) {
+            return null;
+        }
+
+        // 실제 주문 수량 기준 금액으로 저장
+        BigDecimal totalAmount = currentPrice.multiply(quantity);
+
+        if (totalAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            return null;
+        }
+
+        return Order.builder()
                 .account(account)
                 .symbol(symbol)
                 .type(Order.OrderType.LIMIT)
                 .side(Order.OrderSide.BUY)
                 .price(currentPrice)
-                .quantity(orderAmount / currentPrice)
+                .quantity(quantity)
+                .filledQuantity(BigDecimal.ZERO)
+                .filledAmount(BigDecimal.ZERO)
+                .fee(BigDecimal.ZERO)
                 .status(Order.OrderStatus.PENDING)
-                .totalAmount(orderAmount)
+                .totalAmount(totalAmount)
                 .build();
-        
-        return order;
     }
 
-    /**
-     * 포지션 청산
-     */
     public Order executeSellSignal(
             Account account,
             String symbol,
-            double currentPrice,
-            double quantity,
+            BigDecimal currentPrice,
+            BigDecimal quantity,
             HybridSignalAnalyzer.TradeSignal signal) {
-        
-        Order order = Order.builder()
+
+        if (account == null || symbol == null || symbol.isBlank()) {
+            return null;
+        }
+
+        if (currentPrice == null || currentPrice.compareTo(BigDecimal.ZERO) <= 0) {
+            return null;
+        }
+
+        if (quantity == null || quantity.compareTo(BigDecimal.ZERO) <= 0) {
+            return null;
+        }
+
+        BigDecimal totalAmount = currentPrice.multiply(quantity);
+        if (totalAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            return null;
+        }
+
+        return Order.builder()
                 .account(account)
                 .symbol(symbol)
                 .type(Order.OrderType.LIMIT)
                 .side(Order.OrderSide.SELL)
                 .price(currentPrice)
                 .quantity(quantity)
+                .filledQuantity(BigDecimal.ZERO)
+                .filledAmount(BigDecimal.ZERO)
+                .fee(BigDecimal.ZERO)
                 .status(Order.OrderStatus.PENDING)
-                .totalAmount(currentPrice * quantity)
+                .totalAmount(totalAmount)
                 .build();
-        
-        return order;
     }
 
-    /**
-     * 손절 주문 생성
-     */
     public Order executeStopLoss(
             Account account,
             String symbol,
-            double stopLossPrice,
-            double quantity) {
-        
+            BigDecimal stopLossPrice,
+            BigDecimal quantity) {
+
+        if (account == null || symbol == null || symbol.isBlank()) {
+            return null;
+        }
+
+        if (stopLossPrice == null || stopLossPrice.compareTo(BigDecimal.ZERO) <= 0) {
+            return null;
+        }
+
+        if (quantity == null || quantity.compareTo(BigDecimal.ZERO) <= 0) {
+            return null;
+        }
+
         return Order.builder()
                 .account(account)
                 .symbol(symbol)
@@ -94,20 +123,32 @@ public class TradeExecutionEngine {
                 .side(Order.OrderSide.SELL)
                 .price(stopLossPrice)
                 .quantity(quantity)
+                .filledQuantity(BigDecimal.ZERO)
+                .filledAmount(BigDecimal.ZERO)
+                .fee(BigDecimal.ZERO)
                 .status(Order.OrderStatus.PENDING)
                 .remark("StopLoss")
                 .build();
     }
 
-    /**
-     * 익절 주문 생성
-     */
     public Order executeTakeProfit(
             Account account,
             String symbol,
-            double takeProfitPrice,
-            double quantity) {
-        
+            BigDecimal takeProfitPrice,
+            BigDecimal quantity) {
+
+        if (account == null || symbol == null || symbol.isBlank()) {
+            return null;
+        }
+
+        if (takeProfitPrice == null || takeProfitPrice.compareTo(BigDecimal.ZERO) <= 0) {
+            return null;
+        }
+
+        if (quantity == null || quantity.compareTo(BigDecimal.ZERO) <= 0) {
+            return null;
+        }
+
         return Order.builder()
                 .account(account)
                 .symbol(symbol)
@@ -115,64 +156,82 @@ public class TradeExecutionEngine {
                 .side(Order.OrderSide.SELL)
                 .price(takeProfitPrice)
                 .quantity(quantity)
+                .filledQuantity(BigDecimal.ZERO)
+                .filledAmount(BigDecimal.ZERO)
+                .fee(BigDecimal.ZERO)
                 .status(Order.OrderStatus.PENDING)
                 .remark("TakeProfit")
                 .build();
     }
 
-    /**
-     * 신호 강도에 따른 주문 수량 계산
-     * 
-     * STRONG_BUY: 최대 투자액 100%
-     * BUY: 투자액 70%
-     * WEAK_BUY: 투자액 40%
-     */
-    private double calculateOrderAmount(
+    private BigDecimal calculateOrderAmount(
             Account account,
             HybridSignalAnalyzer.TradeSignal signal,
             TradingParameters params) {
-        
-        // 현재 사용 가능 잔액
-        double availableBalance = account.getAvailableBalance();
-        
-        // 1회 최대 투자 금액 (계정의 2-3%)
-        double maxOrderAmount = account.getTotalBalance() * params.getRiskPerTrade();
-        
-        // 실제 주문 금액 (사용 가능 잔액과 최대값의 최소값)
-        double baseAmount = Math.min(availableBalance, maxOrderAmount);
-        
-        // 신호 강도에 따른 투자 비중 조정
-        double orderAmount = 0;
-        switch (signal.getSignal()) {
-            case STRONG_BUY:
-                orderAmount = baseAmount * 1.0;  // 100%
-                break;
-            case BUY:
-                orderAmount = baseAmount * 0.7;  // 70%
-                break;
-            case WEAK_BUY:
-                orderAmount = baseAmount * 0.4;  // 40%
-                break;
-            default:
-                orderAmount = 0;
+
+        if (account == null || signal == null || params == null) {
+            return BigDecimal.ZERO;
         }
-        
-        return orderAmount;
+
+        BigDecimal availableBalance = account.getAvailableBalance();
+        BigDecimal totalBalance = account.getTotalBalance();
+
+        if (availableBalance == null || totalBalance == null) {
+            return BigDecimal.ZERO;
+        }
+
+        if (availableBalance.compareTo(BigDecimal.ZERO) <= 0 || totalBalance.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO;
+        }
+
+        BigDecimal riskPerTrade = params.getRiskPerTrade() != null
+                ? params.getRiskPerTrade()
+                : BigDecimal.ZERO;
+
+        if (riskPerTrade.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO;
+        }
+
+        BigDecimal baseAmount = totalBalance.multiply(riskPerTrade);
+        baseAmount = baseAmount.min(availableBalance);
+
+        if (baseAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO;
+        }
+
+        return switch (signal.getSignal()) {
+            case STRONG_BUY -> baseAmount;
+            case BUY -> baseAmount.multiply(new BigDecimal("0.7"));
+            case WEAK_BUY -> baseAmount.multiply(new BigDecimal("0.4"));
+            default -> BigDecimal.ZERO;
+        };
     }
 
-    // ====== 거래 매개변수 ======
-    
-    @lombok.Builder
-    @lombok.Data
+    @Builder
+    @Data
     public static class TradingParameters {
-        private double riskPerTrade = 0.03;              // 1회 거래 시 계정의 3% 투자
-        private double stopLossPercent = 2.5;            // 손절: 진입가 대비 2.5%
-        private double takeProfitPercent = 6.75;         // 익절: 진입가 대비 6.75%
-        private double maxDailyLoss = 0.10;              // 1일 최대손실: 계정의 10%
-        private int maxOpenPositions = 3;                // 최대 동시 포지션: 3개
-        private int minVolumeRatio = 130;                // 최소 거래량 비율: 130% (평균 대비)
-        private boolean useStopLoss = true;              // 손절 활성화
-        private boolean useTakeProfit = true;            // 익절 활성화
+        @Builder.Default
+        private BigDecimal riskPerTrade = new BigDecimal("0.03");
+
+        @Builder.Default
+        private BigDecimal stopLossPercent = new BigDecimal("2.5");
+
+        @Builder.Default
+        private BigDecimal takeProfitPercent = new BigDecimal("6.75");
+
+        @Builder.Default
+        private BigDecimal maxDailyLoss = new BigDecimal("10.0");
+
+        @Builder.Default
+        private int maxOpenPositions = 3;
+
+        @Builder.Default
+        private int minVolumeRatio = 130;
+
+        @Builder.Default
+        private boolean useStopLoss = true;
+
+        @Builder.Default
+        private boolean useTakeProfit = true;
     }
 }
-

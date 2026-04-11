@@ -4,6 +4,8 @@ import com.example.cryptobot.common.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.math.BigDecimal;
+
 @Entity
 @Table(name = "tickers", indexes = {
     @Index(name = "idx_symbol", columnList = "symbol", unique = true)
@@ -23,34 +25,33 @@ public class Ticker extends BaseEntity {
     private String symbol;
 
     @Column(columnDefinition = "DECIMAL(19,2)")
-    private Double currentPrice;
+    private BigDecimal currentPrice;
 
     @Column(columnDefinition = "DECIMAL(19,2)")
-    private Double highPrice24h;
+    private BigDecimal highPrice24h;
 
     @Column(columnDefinition = "DECIMAL(19,2)")
-    private Double lowPrice24h;
+    private BigDecimal lowPrice24h;
 
     @Column(columnDefinition = "DECIMAL(19,8)")
-    private Double volume24h;
+    private BigDecimal volume24h;
 
     @Column(columnDefinition = "DECIMAL(19,2)")
-    private Double changePercent24h;
+    private BigDecimal changePercent24h;
 
     @Column(columnDefinition = "DECIMAL(19,2)")
-    private Double bid;
+    private BigDecimal bid;
 
     @Column(columnDefinition = "DECIMAL(19,2)")
-    private Double ask;
+    private BigDecimal ask;
 
     @Column(columnDefinition = "DECIMAL(19,8)")
-    private Double bidVolume;
+    private BigDecimal bidVolume;
 
     @Column(columnDefinition = "DECIMAL(19,8)")
-    private Double askVolume;
+    private BigDecimal askVolume;
 
     @Column(columnDefinition = "DECIMAL(19,2)")
-    private Double marketCap;
-
+    private BigDecimal marketCap;
 }
 
