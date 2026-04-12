@@ -19,4 +19,6 @@ public interface PositionRepository extends JpaRepository<Position, Long> {
             Account account,
             Position.PositionStatus status
     );
+
+    List<Position> findByStatus(Position.PositionStatus status);
 }
