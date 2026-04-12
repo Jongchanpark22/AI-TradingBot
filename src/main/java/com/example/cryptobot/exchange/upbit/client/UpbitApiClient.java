@@ -3,6 +3,7 @@ package com.example.cryptobot.exchange.upbit.client;
 import com.example.cryptobot.exchange.upbit.config.UpbitApiProperties;
 import com.example.cryptobot.exchange.upbit.dto.UpbitAccountDto;
 import com.example.cryptobot.exchange.upbit.dto.UpbitCandleDto;
+import com.example.cryptobot.exchange.upbit.dto.UpbitMarketDto;
 import com.example.cryptobot.exchange.upbit.dto.UpbitOrderDto;
 import com.example.cryptobot.exchange.upbit.dto.UpbitTickerDto;
 import io.jsonwebtoken.Jwts;
@@ -141,6 +142,40 @@ public class UpbitApiClient {
         }
     }
 
+    /**
+     * 전체 KRW 마켓 목록 조회
+     * GET /v1/market/all
+     */
+    public List<String> getAllKrwMarkets() {
+        try {
+            String url = UriComponentsBuilder
+                    .fromHttpUrl(properties.getBaseUrl() + "/v1/market/all")
+                    .queryParam("isDetails", false)
+                    .toUriString();
+
+            ResponseEntity<UpbitMarketDto[]> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.GET,
+                    null,
+                    UpbitMarketDto[].class
+            );
+
+            UpbitMarketDto[] body = response.getBody();
+            if (body == null) return List.of();
+
+            List<String> markets = Arrays.stream(body)
+                    .map(UpbitMarketDto::getMarket)
+                    .filter(m -> m != null && m.startsWith("KRW-"))
+                    .toList();
+
+            log.debug("KRW 마켓 조회: {} 개", markets.size());
+            return markets;
+        } catch (Exception e) {
+            log.error("마켓 목록 조회 실패", e);
+            return List.of();
+        }
+    }
+
     // ===== 인증 필요 API =====
 
     /**
@@ -227,6 +262,36 @@ public class UpbitApiClient {
     }
 
     /**
+     * 주문 상태 조회
+     *
+     * @param uuid 업비트 주문 UUID
+     */
+    public UpbitOrderDto getOrderStatus(String uuid) {
+        try {
+            Map<String, Object> params = new LinkedHashMap<>();
+            params.put("uuid", uuid);
+
+            String queryStringForHash = buildQueryStringForHash(params);
+            String token = generateAuthToken(queryStringForHash);
+
+            String url = UriComponentsBuilder
+                    .fromHttpUrl(properties.getBaseUrl() + "/v1/order")
+                    .queryParam("uuid", uuid)
+                    .toUriString();
+
+            HttpEntity<Void> entity = new HttpEntity<>(createAuthHeaders(token));
+
+            ResponseEntity<UpbitOrderDto> response = restTemplate.exchange(
+                    url, HttpMethod.GET, entity, UpbitOrderDto.class);
+
+            return response.getBody();
+        } catch (Exception e) {
+            log.error("주문 상태 조회 실패: uuid={}", uuid, e);
+            return null;
+        }
+    }
+
+    /**
      * 주문 취소
      *
      * @param uuid 업비트 주문 UUID
@@ -283,7 +348,7 @@ public class UpbitApiClient {
 
         return Jwts.builder()
                 .setClaims(claims)
-                .signWith(key, SignatureAlgorithm.HS512)
+                .signWith(key, SignatureAlgorithm.HS256)
                 .compact();
     }
 

@@ -1,7 +1,10 @@
 package com.example.cryptobot.strategy.monitor;
 
 import com.example.cryptobot.exchange.upbit.client.UpbitWebSocketClient;
+import com.example.cryptobot.exchange.upbit.dto.UpbitOrderDto;
 import com.example.cryptobot.exchange.upbit.service.UpbitOrderService;
+import com.example.cryptobot.order.Order;
+import com.example.cryptobot.order.OrderRepository;
 import com.example.cryptobot.portfolio.Position;
 import com.example.cryptobot.portfolio.PositionRepository;
 import com.example.cryptobot.strategy.risk.RiskManager;
@@ -46,6 +49,7 @@ import java.util.stream.Collectors;
 public class PositionMonitor {
 
     private final PositionRepository positionRepository;
+    private final OrderRepository orderRepository;
     private final UpbitWebSocketClient webSocketClient;
     private final UpbitOrderService orderService;
     private final RiskManager riskManager;
@@ -55,9 +59,11 @@ public class PositionMonitor {
 
     public PositionMonitor(
             PositionRepository positionRepository,
+            OrderRepository orderRepository,
             UpbitWebSocketClient webSocketClient,
             UpbitOrderService orderService) {
         this.positionRepository = positionRepository;
+        this.orderRepository = orderRepository;
         this.webSocketClient = webSocketClient;
         this.orderService = orderService;
         this.riskManager = new RiskManager(new RiskParameters(
@@ -144,7 +150,12 @@ public class PositionMonitor {
         log.warn("⚡ [{}] STOP HIT @ {} — {} — selling full position",
                 mp.symbol, price, reason);
         try {
-            orderService.placeSellMarketOrder(mp.symbol, mp.quantity);
+            UpbitOrderDto result = orderService.placeSellMarketOrder(mp.symbol, mp.quantity);
+            if (result != null) {
+                saveOrderRecord(mp, mp.quantity, price, result, "StopLoss:" + reason);
+            } else {
+                log.error("[PositionMonitor] 손절 주문 제출 실패: {}", mp.symbol);
+            }
             closePositionInDb(mp.positionId);
             untrackPosition(mp.symbol);
         } catch (Exception e) {
@@ -157,11 +168,50 @@ public class PositionMonitor {
         log.info("📊 [{}] PARTIAL EXIT @ {} — {} — selling {}",
                 mp.symbol, price, reason, halfQty);
         try {
-            orderService.placeSellMarketOrder(mp.symbol, halfQty);
+            UpbitOrderDto result = orderService.placeSellMarketOrder(mp.symbol, halfQty);
+            if (result != null) {
+                saveOrderRecord(mp, halfQty, price, result, "PartialExit:+1R");
+            } else {
+                log.error("[PositionMonitor] 부분 청산 주문 제출 실패: {}", mp.symbol);
+            }
             mp.quantity = mp.quantity.subtract(halfQty);
             updatePositionPartialExit(mp);
         } catch (Exception e) {
             log.error("Failed to execute partial exit for {}", mp.symbol, e);
+        }
+    }
+
+    private void saveOrderRecord(MonitoredPosition mp, BigDecimal quantity,
+                                 BigDecimal price, UpbitOrderDto dto, String remark) {
+        try {
+            positionRepository.findById(mp.positionId).ifPresent(pos -> {
+                BigDecimal executedVolume = dto.getExecutedVolume() != null ? dto.getExecutedVolume() : quantity;
+                BigDecimal paidFee        = dto.getPaidFee()        != null ? dto.getPaidFee()        : BigDecimal.ZERO;
+                Order.OrderStatus status  = "done".equals(dto.getState())
+                        ? Order.OrderStatus.FILLED : Order.OrderStatus.PENDING;
+
+                Order order = Order.builder()
+                        .account(pos.getAccount())
+                        .symbol(mp.symbol)
+                        .type(Order.OrderType.MARKET)
+                        .side(Order.OrderSide.SELL)
+                        .price(price)
+                        .quantity(quantity)
+                        .filledQuantity(executedVolume)
+                        .filledAmount(price.multiply(executedVolume))
+                        .fee(paidFee)
+                        .status(status)
+                        .exchangeOrderId(dto.getUuid())
+                        .totalAmount(price.multiply(quantity))
+                        .remark(remark)
+                        .build();
+
+                orderRepository.save(order);
+                log.info("[PositionMonitor] 거래 내역 저장: symbol={}, qty={}, status={}, uuid={}",
+                        mp.symbol, quantity, status, dto.getUuid());
+            });
+        } catch (Exception e) {
+            log.error("[PositionMonitor] 거래 내역 저장 실패: symbol={}", mp.symbol, e);
         }
     }
 

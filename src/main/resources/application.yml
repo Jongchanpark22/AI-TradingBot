@@ -37,6 +37,23 @@ spring:
     redis:
       time-to-live: 10m
 
+trading:
+  scheduler:
+    enabled: true        # false로 바꾸면 전략 스케줄러 중지
+
+  scanner:
+    min-trade-price-24h: 5000000000   # 최소 24h 거래대금 (50억 KRW)
+    max-coins: 20                     # 스캔 결과 최대 코인 수
+    min-change-rate: -0.03            # 최소 24h 변동률 (-3%)
+    max-change-rate: 0.15             # 최대 24h 변동률 (+15%, 과매수 제외)
+
+  risk:
+    stop-loss-percent: 2.5            # 손절 비율 (%)
+    take-profit-percent: 6.75         # 익절 비율 (%)
+    max-daily-loss: 10.0              # 일일 최대 손실 한도 (%)
+    risk-per-trade: 0.03              # 1회 거래당 투자 비율 (총 자산의 3%)
+    max-open-positions: 3             # 최대 동시 보유 코인 수
+
 upbit:
   api:
     base-url: https://api.upbit.com

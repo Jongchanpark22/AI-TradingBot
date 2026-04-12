@@ -19,5 +19,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             String symbol,
             List<Order.OrderStatus> statuses
     );
+
+    List<Order> findByStatusInAndExchangeOrderIdIsNotNull(List<Order.OrderStatus> statuses);
 }
 
