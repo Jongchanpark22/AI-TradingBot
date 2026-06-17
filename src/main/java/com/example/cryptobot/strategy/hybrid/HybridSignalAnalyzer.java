@@ -23,9 +23,12 @@ public class HybridSignalAnalyzer {
         double previousHistogram = previousMacd - previousSignalLine;
 
         if (macd > signalLine && macd > 0) {
-            return (previousHistogram <= 0 && histogram > 0)
-                    ? MomentumSignal.STRONG_BUY
-                    : MomentumSignal.BUY;
+            if (previousHistogram <= 0 && histogram > 0) {
+                return MomentumSignal.STRONG_BUY;  // 시그널선 골든크로스 (가장 신선한 신호)
+            } else if (histogram > previousHistogram) {
+                return MomentumSignal.BUY;  // 히스토그램 증가 중 (모멘텀 살아있음)
+            }
+            return MomentumSignal.NEUTRAL;  // 위에 있지만 모멘텀 약해지는 중 → 늦은 진입 차단
         } else if (macd < signalLine && macd < 0) {
             return (previousHistogram >= 0 && histogram < 0)
                     ? MomentumSignal.STRONG_SELL
@@ -36,16 +39,15 @@ public class HybridSignalAnalyzer {
     }
 
     public RSISignal analyzeRSI(double rsi) {
-        if (rsi < 30) return RSISignal.OVERSOLD;
-        else if (rsi < 40) return RSISignal.WEAK_SELL;
-        else if (rsi > 70) return RSISignal.OVERBOUGHT;
-        else if (rsi > 60) return RSISignal.WEAK_BUY;
+        if (rsi > 70) return RSISignal.OVERBOUGHT;
+        else if (rsi >= 50 && rsi <= 65) return RSISignal.WEAK_BUY;  // 모멘텀 빌드업 구간 (이상적 진입)
+        else if (rsi < 35) return RSISignal.OVERSOLD;                // 낙하 위험 구간 (점수 없음)
         return RSISignal.NEUTRAL;
     }
 
     public VolumeSignal analyzeVolume(double currentVolume, double volumeMA20) {
         if (volumeMA20 <= 0) {
-            return VolumeSignal.VERY_LOW_CONFIDENCE;
+            return VolumeSignal.NORMAL;  // DB volume 데이터 없음 → 중립 처리 (잘못된 차단 방지)
         }
 
         double volumeRatio = currentVolume / volumeMA20;
@@ -97,13 +99,15 @@ public class HybridSignalAnalyzer {
         else if (momentum == MomentumSignal.STRONG_SELL) bearishScore += 2;
         else if (momentum == MomentumSignal.SELL) bearishScore += 1;
 
-        if (rsi == RSISignal.OVERSOLD || rsi == RSISignal.WEAK_BUY) bullishScore += 1;
-        if (rsi == RSISignal.OVERBOUGHT || rsi == RSISignal.WEAK_SELL) bearishScore += 1;
+        if (rsi == RSISignal.WEAK_BUY) bullishScore += 1;  // OVERSOLD는 하락 위험 신호 — 점수 없음
+        if (rsi == RSISignal.OVERBOUGHT) bearishScore += 1;
 
-        if (candle == CandleSignal.STRONG_BULLISH || candle == CandleSignal.HAMMER) bullishScore += 1;
+        if (candle == CandleSignal.STRONG_BULLISH || candle == CandleSignal.HAMMER
+                || candle == CandleSignal.CONSECUTIVE_BULLISH) bullishScore += 1;
         if (candle == CandleSignal.STRONG_BEARISH || candle == CandleSignal.SHOOTING_STAR) bearishScore += 1;
 
-        if (volume == VolumeSignal.VERY_LOW_CONFIDENCE || volume == VolumeSignal.LOW_CONFIDENCE) {
+        // 거래량 절대 부족(평균의 80% 미만)만 즉시 차단 — LOW_CONFIDENCE(80~100%)는 score 체크로 이어짐
+        if (volume == VolumeSignal.VERY_LOW_CONFIDENCE) {
             return TradeSignal.builder()
                     .signal(SignalType.NO_SIGNAL)
                     .confidence(0)
@@ -111,9 +115,16 @@ public class HybridSignalAnalyzer {
                     .build();
         }
 
-        if (bullishScore >= 4 && volume == VolumeSignal.VERY_HIGH_CONFIDENCE) {
+        // 매수 필수 조건: 추세·모멘텀 모두 상승 확인, RSI 과매수 아님
+        boolean trendBullish     = trend == TrendSignal.STRONG_UPTREND || trend == TrendSignal.UPTREND;
+        boolean momentumBullish  = momentum == MomentumSignal.STRONG_BUY || momentum == MomentumSignal.BUY;
+        boolean rsiNotOverbought = rsi != RSISignal.OVERBOUGHT;
+
+        if (bullishScore >= 5 && volume == VolumeSignal.VERY_HIGH_CONFIDENCE
+                && trendBullish && momentumBullish && rsiNotOverbought) {
             return TradeSignal.builder().signal(SignalType.STRONG_BUY).confidence(95).reason("완벽한 매수").score(bullishScore).build();
-        } else if (bullishScore >= 3 && volume.ordinal() >= VolumeSignal.HIGH_CONFIDENCE.ordinal()) {
+        } else if (bullishScore >= 4 && volume.ordinal() >= VolumeSignal.HIGH_CONFIDENCE.ordinal()
+                && trendBullish && momentumBullish && rsiNotOverbought) {
             return TradeSignal.builder().signal(SignalType.BUY).confidence(80).reason("강한 매수").score(bullishScore).build();
         } else if (bearishScore >= 4 && volume == VolumeSignal.VERY_HIGH_CONFIDENCE) {
             return TradeSignal.builder().signal(SignalType.STRONG_SELL).confidence(95).reason("완벽한 매도").score(bearishScore).build();
@@ -128,7 +139,7 @@ public class HybridSignalAnalyzer {
     public enum MomentumSignal { STRONG_BUY, BUY, NEUTRAL, SELL, STRONG_SELL }
     public enum RSISignal { OVERSOLD, WEAK_SELL, NEUTRAL, WEAK_BUY, OVERBOUGHT }
     public enum VolumeSignal { VERY_LOW_CONFIDENCE, LOW_CONFIDENCE, NORMAL, HIGH_CONFIDENCE, VERY_HIGH_CONFIDENCE }
-    public enum CandleSignal { HAMMER, SHOOTING_STAR, STRONG_BULLISH, STRONG_BEARISH, DOJI, NEUTRAL }
+    public enum CandleSignal { HAMMER, SHOOTING_STAR, STRONG_BULLISH, CONSECUTIVE_BULLISH, STRONG_BEARISH, DOJI, NEUTRAL }
     public enum SignalType { STRONG_BUY, BUY, WEAK_BUY, NO_SIGNAL, WEAK_SELL, SELL, STRONG_SELL }
 
     @Builder

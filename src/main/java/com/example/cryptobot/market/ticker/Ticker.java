@@ -33,7 +33,7 @@ public class Ticker extends BaseEntity {
     @Column(columnDefinition = "DECIMAL(19,2)")
     private BigDecimal lowPrice24h;
 
-    @Column(columnDefinition = "DECIMAL(19,8)")
+    @Column(columnDefinition = "DECIMAL(38,8)")
     private BigDecimal volume24h;
 
     @Column(columnDefinition = "DECIMAL(19,2)")

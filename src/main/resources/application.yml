@@ -44,14 +44,16 @@ trading:
   scanner:
     min-trade-price-24h: 5000000000   # 최소 24h 거래대금 (50억 KRW)
     max-coins: 20                     # 스캔 결과 최대 코인 수
-    min-change-rate: -0.03            # 최소 24h 변동률 (-3%)
-    max-change-rate: 0.15             # 최대 24h 변동률 (+15%, 과매수 제외)
+    min-change-rate: 0.005            # 최소 24h 변동률 (+0.5%, 하락/보합 코인 제외)
+    max-change-rate: 0.07             # 최대 24h 변동률 (+7%, 과매수 제외)
 
   risk:
-    stop-loss-percent: 2.5            # 손절 비율 (%)
-    take-profit-percent: 6.75         # 익절 비율 (%)
+    stop-loss-percent: 5.0            # 손절 비율 (%) — 2.5→5.0 (ATR 여유 확보)
+    take-profit-percent: 10.0          # 목표 수익 비율 (%) — 7→10 (2R 기준)
     max-daily-loss: 10.0              # 일일 최대 손실 한도 (%)
-    risk-per-trade: 0.03              # 1회 거래당 투자 비율 (총 자산의 3%)
+    risk-per-trade: 0.10              # 1회 기본 투자 비율 (총자산의 10%, 승률 회복 전 자본 보호)
+    max-order-percent: 0.15           # 1회 최대 투자 비율 (총자산의 15%, STRONG_BUY 시)
+    min-order-amount: 20000           # 최소 주문 금액 (KRW)
     max-open-positions: 3             # 최대 동시 보유 코인 수
 
 upbit:

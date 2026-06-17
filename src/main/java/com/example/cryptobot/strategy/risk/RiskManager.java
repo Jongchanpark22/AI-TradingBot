@@ -124,8 +124,12 @@ public final class RiskManager {
         }
 
         // ---- 3. chandelier trailing stop -------------------------------
-        if (atr > 0 && highestPriceSeen > entryPrice) {
-            double chandelier = highestPriceSeen - params.trailingAtrMultiplier() * atr;
+        // ATR이 0이면 최고가의 1.5% 고정 폴백 사용 (포지션 매입 시 atrAtEntry=0으로 저장되는 경우 대비)
+        if (highestPriceSeen > entryPrice) {
+            double trailingOffset = atr > 0
+                    ? params.trailingAtrMultiplier() * atr
+                    : highestPriceSeen * 0.03;  // ATR 없을 때 최고가 대비 3% 폴백 (기존 1.5% → 너무 타이트)
+            double chandelier = highestPriceSeen - trailingOffset;
             // monotonically non-decreasing
             double newStop = Math.max(currentStopLoss, chandelier);
             if (newStop > currentStopLoss) {

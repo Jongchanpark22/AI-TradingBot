@@ -82,6 +82,14 @@ public class UpbitOrderService {
                 log.info("✓ 시장가 매도 주문 성공: {} {}", market, volume);
             }
             return order;
+        } catch (org.springframework.web.client.HttpClientErrorException e) {
+            String body = e.getResponseBodyAsString();
+            // 잔고 부족 / 최소금액 미달 — 호출자가 포지션 강제 청산할 수 있도록 그대로 전파
+            if (body.contains("insufficient_funds_ask") || body.contains("under_min_total_market_ask")) {
+                throw e;
+            }
+            log.error("시장가 매도 주문 실패: {} {}", market, volume, e);
+            return null;
         } catch (Exception e) {
             log.error("시장가 매도 주문 실패: {} {}", market, volume, e);
             return null;

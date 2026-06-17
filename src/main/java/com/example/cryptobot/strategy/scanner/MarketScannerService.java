@@ -23,11 +23,11 @@ import java.util.List;
  *   <li><b>거래 중단 제외</b>: isTradingSuspended = true 제외</li>
  * </ol>
  *
- * <h3>점수 산출 (100점 만점)</h3>
+ * <h3>점수 산출 (100점 만점) — 유동성 + 트렌드 위치 + 모멘텀 우선</h3>
  * <ul>
- *   <li>거래대금 점수 (40점): 후보군 내 정규화된 24h 거래대금 순위</li>
- *   <li>모멘텀 점수 (30점): 변동률 기반 (0%~+15% 구간에서 선형 증가)</li>
- *   <li>52주 위치 점수 (30점): 52주 고가 대비 현재가 낮을수록 상승 여력 높음</li>
+ *   <li>거래대금 점수 (40점): 후보군 내 정규화된 24h 거래대금 순위 (유동성)</li>
+ *   <li>트렌드 위치 점수 (35점): 24h 고저 범위 상위 55~85% 위치 코인 우대 (상승 추세 진행 중)</li>
+ *   <li>모멘텀 점수 (25점): 변동률 +1%~+5% 구간 우대 (상승 추세 확인된 코인)</li>
  * </ul>
  */
 @Slf4j
@@ -120,39 +120,64 @@ public class MarketScannerService {
     // ---- 점수 계산 ----
 
     /**
-     * 코인 점수 계산 (100점 만점).
+     * 코인 점수 계산 (100점 만점) — 유동성 + 트렌드 위치 + 모멘텀 우선.
      *
-     * @param t         티커 데이터
-     * @param maxVolume 후보군 내 최대 거래대금 (정규화 기준)
+     * <ul>
+     *   <li>거래대금 점수 (40점): 유동성</li>
+     *   <li>트렌드 위치 점수 (35점): 현재가가 24h 범위 55~85% 구간에 위치할수록 높음
+     *       (상승 추세 진행 중 — 하락/보합 코인은 0점)</li>
+     *   <li>모멘텀 점수 (25점): 변동률 +1%~+5% 구간 우대 (상승 추세 확인된 코인)</li>
+     * </ul>
      */
     private double computeScore(UpbitTickerDto t, double maxVolume) {
-        // 거래대금 점수 (0 ~ 40점): 후보군 내 정규화
+        // 거래대금 점수 (0 ~ 40점): 후보군 내 정규화 — 유동성 높은 코인 우대
         double volumeScore = (t.getAccTradePrice24h().doubleValue() / maxVolume) * 40.0;
 
-        // 모멘텀 점수 (0 ~ 30점): 0%~15% 구간 선형 증가
-        double rate = t.getSignedChangeRate().doubleValue();
-        double momentumScore;
-        if (rate <= 0) {
-            momentumScore = 0;
-        } else {
-            momentumScore = Math.min(30.0, (rate / 0.15) * 30.0);
-        }
-
-        // 52주 위치 점수 (0 ~ 30점): 현재가가 52주 고가 대비 낮을수록 상승 여력 높음
-        double positionScore = 0;
-        if (t.getHighest52WeekPrice() != null && t.getLowest52WeekPrice() != null
-                && t.getTradePrice() != null) {
-            double high52 = t.getHighest52WeekPrice().doubleValue();
-            double low52 = t.getLowest52WeekPrice().doubleValue();
-            double current = t.getTradePrice().doubleValue();
-            double range = high52 - low52;
-            if (range > 0) {
-                double positionRatio = (current - low52) / range; // 0=저점, 1=고점
-                positionScore = (1.0 - positionRatio) * 30.0;    // 저점에 가까울수록 고점
+        // 트렌드 위치 점수 (0 ~ 35점): 24h 고저 범위의 상위 구간 코인 우대
+        // position = 0 → 24h 최저가, 1 → 24h 최고가
+        // 상승 추세 코인은 고점 근처에 위치 → 0.55~0.90 구간 최고점
+        // 0.90 초과(극단 고점)는 단기 차익실현 위험 → 점수 감소
+        double breakoutReadinessScore = 0;
+        if (t.getHighPrice() != null && t.getLowPrice() != null && t.getTradePrice() != null) {
+            double high24 = t.getHighPrice().doubleValue();
+            double low24  = t.getLowPrice().doubleValue();
+            double cur    = t.getTradePrice().doubleValue();
+            double range  = high24 - low24;
+            if (range > 0 && cur > 0) {
+                double position = (cur - low24) / range;
+                // 최적 구간: 0.55~0.85 (상위권, 상승 추세 진행 중)
+                // 0.40~0.55: 중간권, 추세 전환 초입 → 부분 점수
+                // 0.85~1.00: 극단 고점 → 선형 감소 (단기 조정 위험)
+                // 0.40 미만: 하락 또는 보합 → 0점
+                if (position >= 0.55 && position <= 0.85) {
+                    breakoutReadinessScore = 35.0;
+                } else if (position >= 0.40 && position < 0.55) {
+                    breakoutReadinessScore = ((position - 0.40) / 0.15) * 20.0;
+                } else if (position > 0.85 && position <= 1.0) {
+                    breakoutReadinessScore = Math.max(0, (1.0 - position) / 0.15) * 35.0;
+                }
+                // position < 0.40 → 0점 (하락 추세)
             }
         }
 
-        return volumeScore + momentumScore + positionScore;
+        // 모멘텀 점수 (0 ~ 25점): +1%~+5% 구간 우대 (상승 추세 확인된 코인)
+        // min-change-rate=0.005 필터 통과 코인 기준: 0%~+0.5%는 이미 차단됨
+        double rate = t.getSignedChangeRate().doubleValue();
+        double momentumScore;
+        if (rate >= 0.01 && rate <= 0.05) {
+            // +1%~+5%: 상승 모멘텀 최적 구간 (25점 만점)
+            momentumScore = Math.max(0, (1.0 - Math.abs(rate - 0.03) / 0.02)) * 25.0;
+        } else if (rate > 0.05 && rate <= 0.07) {
+            // +5%~+7%: 강한 상승, 과매수 주의 → 낮은 점수
+            momentumScore = Math.max(0, (0.07 - rate) / 0.02) * 12.0;
+        } else if (rate >= 0.005 && rate < 0.01) {
+            // +0.5%~+1%: 추세 초입, 소폭 점수
+            momentumScore = Math.max(0, (rate - 0.005) / 0.005) * 10.0;
+        } else {
+            momentumScore = 0;
+        }
+
+        return volumeScore + breakoutReadinessScore + momentumScore;
     }
 
     // ---- 유틸 ----

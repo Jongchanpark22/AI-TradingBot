@@ -190,37 +190,45 @@ public class TradeExecutionEngine {
         }
 
         BigDecimal availableBalance = account.getAvailableBalance();
-        BigDecimal totalBalance = account.getTotalBalance();
-
-        if (availableBalance == null || totalBalance == null) {
+        if (availableBalance == null || availableBalance.compareTo(BigDecimal.ZERO) <= 0) {
             return BigDecimal.ZERO;
         }
 
-        if (availableBalance.compareTo(BigDecimal.ZERO) <= 0 || totalBalance.compareTo(BigDecimal.ZERO) <= 0) {
-            return BigDecimal.ZERO;
-        }
+        // 기준: 전체 자산(totalBalance) 기준 비율로 계산, 실제 사용 가능 원화로 상한
+        BigDecimal totalBalance = account.getTotalBalance() != null
+                && account.getTotalBalance().compareTo(BigDecimal.ZERO) > 0
+                ? account.getTotalBalance() : availableBalance;
 
         BigDecimal riskPerTrade = params.getRiskPerTrade() != null
-                ? params.getRiskPerTrade()
-                : BigDecimal.ZERO;
+                ? params.getRiskPerTrade() : new BigDecimal("0.20");
+        BigDecimal maxPercent = params.getMaxOrderPercent() != null
+                ? params.getMaxOrderPercent() : new BigDecimal("0.25");
+        BigDecimal minAmount = params.getMinOrderAmount() != null
+                ? params.getMinOrderAmount() : new BigDecimal("10000");
 
-        if (riskPerTrade.compareTo(BigDecimal.ZERO) <= 0) {
-            return BigDecimal.ZERO;
-        }
+        // 기본 20%, 최대 25% (전체 자산 기준)
+        BigDecimal baseAmount = totalBalance.multiply(riskPerTrade).min(availableBalance);   // 20%
+        BigDecimal maxAmount  = totalBalance.multiply(maxPercent).min(availableBalance);     // 25%
 
-        BigDecimal baseAmount = totalBalance.multiply(riskPerTrade);
-        baseAmount = baseAmount.min(availableBalance);
-
-        if (baseAmount.compareTo(BigDecimal.ZERO) <= 0) {
-            return BigDecimal.ZERO;
-        }
-
-        return switch (signal.getSignal()) {
-            case STRONG_BUY -> baseAmount;
-            case BUY -> baseAmount.multiply(new BigDecimal("0.7"));
-            case WEAK_BUY -> baseAmount.multiply(new BigDecimal("0.4"));
-            default -> BigDecimal.ZERO;
+        BigDecimal orderAmount = switch (signal.getSignal()) {
+            case STRONG_BUY -> maxAmount;                                  // 25%
+            case BUY        -> baseAmount;                                 // 20%
+            case WEAK_BUY   -> baseAmount.multiply(new BigDecimal("0.7")); // ~14%
+            default         -> BigDecimal.ZERO;
         };
+
+        // 25% 상한 적용
+        orderAmount = orderAmount.min(maxAmount);
+
+        // 최소 주문금액 10,000 KRW
+        if (orderAmount.compareTo(minAmount) < 0) {
+            if (availableBalance.compareTo(minAmount) >= 0) {
+                return minAmount;
+            }
+            return BigDecimal.ZERO;
+        }
+
+        return orderAmount;
     }
 
     // ============================================================
@@ -352,14 +360,23 @@ public class TradeExecutionEngine {
     @Builder
     @Data
     public static class TradingParameters {
+        /** 기본 투자 비율 — 총 자산의 25% */
         @Builder.Default
-        private BigDecimal riskPerTrade = new BigDecimal("0.03");
+        private BigDecimal riskPerTrade = new BigDecimal("0.25");
+
+        /** 최대 투자 비율 — 총 자산의 30% (STRONG_BUY 시 적용) */
+        @Builder.Default
+        private BigDecimal maxOrderPercent = new BigDecimal("0.30");
+
+        /** 최소 주문 금액 (KRW) */
+        @Builder.Default
+        private BigDecimal minOrderAmount = new BigDecimal("20000");
 
         @Builder.Default
         private BigDecimal stopLossPercent = new BigDecimal("2.5");
 
         @Builder.Default
-        private BigDecimal takeProfitPercent = new BigDecimal("6.75");
+        private BigDecimal takeProfitPercent = new BigDecimal("7.0");
 
         @Builder.Default
         private BigDecimal maxDailyLoss = new BigDecimal("10.0");

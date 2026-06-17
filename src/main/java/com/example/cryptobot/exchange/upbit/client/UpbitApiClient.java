@@ -255,6 +255,16 @@ public class UpbitApiClient {
                 log.info("주문 생성 성공: {} {} {} {}", market, side, volume, price);
             }
             return result;
+        } catch (org.springframework.web.client.HttpClientErrorException e) {
+            // ask(매도) 주문의 잔고 부족 / 최소금액 미달 오류는 호출자가 처리하도록 rethrow
+            if ("ask".equals(side)) {
+                String body = e.getResponseBodyAsString();
+                if (body.contains("insufficient_funds_ask") || body.contains("under_min_total_market_ask")) {
+                    throw e;
+                }
+            }
+            log.error("주문 생성 실패: {} {} {} {}", market, side, volume, price, e);
+            return null;
         } catch (Exception e) {
             log.error("주문 생성 실패: {} {} {} {}", market, side, volume, price, e);
             return null;

@@ -48,8 +48,8 @@ public class UpbitMarketService {
             ticker.setChangePercent24h(dto.getSignedChangeRate());
             ticker.setBid(dto.getTradePrice());
             ticker.setAsk(dto.getTradePrice());
-            ticker.setBidVolume(dto.getAccTradeVolume24h());
-            ticker.setAskVolume(dto.getAccTradeVolume24h());
+            ticker.setBidVolume(null);
+            ticker.setAskVolume(null);
             ticker.setMarketCap(null);
 
             log.debug("시세 저장: {} = {}", market, dto.getTradePrice());
@@ -81,8 +81,8 @@ public class UpbitMarketService {
                         ticker.setChangePercent24h(dto.getSignedChangeRate());
                         ticker.setBid(dto.getTradePrice());
                         ticker.setAsk(dto.getTradePrice());
-                        ticker.setBidVolume(dto.getAccTradeVolume24h());
-                        ticker.setAskVolume(dto.getAccTradeVolume24h());
+                        ticker.setBidVolume(null);
+                        ticker.setAskVolume(null);
                         ticker.setMarketCap(null);
 
                         return ticker;
@@ -107,12 +107,20 @@ public class UpbitMarketService {
 
             Candle.CandlePeriod period = convertToCandlePeriod(unit);
 
-            List<Candle> candles = dtos.stream()
+            // volume이 있는 캔들이 20개 미만이면 전체 저장 (초기/누락 데이터 보정)
+            // 충분히 채워진 경우 최신 2개만 upsert
+            long existingCount = candleRepository.countBySymbolAndPeriod(market, period);
+            long validVolumeCount = existingCount > 0
+                    ? candleRepository.countValidVolumeBySymbolAndPeriod(market, period.name())
+                    : 0;
+            List<UpbitCandleDto> dtosToSave = (existingCount >= count && validVolumeCount >= 20)
+                    ? dtos.subList(0, Math.min(2, dtos.size()))  // 최신 2개 (API는 desc 순)
+                    : dtos;
+
+            List<Candle> candles = dtosToSave.stream()
                     .map(dto -> {
                         LocalDateTime timestamp = parseDateTime(dto.getCandleDateTimeUtc());
-                        if (timestamp == null) {
-                            return null;
-                        }
+                        if (timestamp == null) return null;
 
                         Optional<Candle> existing = candleRepository
                                 .findBySymbolAndPeriodAndTimestamp(market, period, timestamp);
@@ -137,7 +145,7 @@ public class UpbitMarketService {
                 return List.of();
             }
 
-            log.debug("캔들 저장: {} {}분봉 {} 개", market, unit, candles.size());
+            log.debug("캔들 저장: {} {}분봉 {} 개 (DB보유={})", market, unit, candles.size(), existingCount);
             return candleRepository.saveAll(candles);
         } catch (Exception e) {
             log.error("캔들 저장 실패: {} {}분봉", market, unit, e);
