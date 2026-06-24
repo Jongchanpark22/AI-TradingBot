@@ -30,7 +30,8 @@ class PositionMonitorTest {
                 100.0,   // highestSeen
                 2.0,     // atr
                 false,   // partialDone
-                BigDecimal.valueOf(0.5)
+                BigDecimal.valueOf(0.5),
+                false    // aboveProfitTarget
         );
     }
 
