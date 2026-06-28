@@ -31,7 +31,8 @@ class PositionMonitorTest {
                 2.0,     // atr
                 false,   // partialDone
                 BigDecimal.valueOf(0.5),
-                false    // aboveProfitTarget
+                false,   // aboveProfitTarget
+                null     // signalId
         );
     }
 

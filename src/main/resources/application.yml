@@ -41,6 +41,12 @@ trading:
   scheduler:
     enabled: true        # false로 바꾸면 전략 스케줄러 중지
 
+  ai:
+    base-url: http://localhost:8000   # Python ML 서버 주소
+    timeout-ms: 800                   # ML 서버 응답 타임아웃 (ms)
+    mode: RULE_ONLY                   # RULE_ONLY: ML 없이 기존 동작 / SHADOW: ML 로그만 / ENSEMBLE: ML 필터 적용
+    buy-threshold: 0.6                # ENSEMBLE 모드 매수 최소 확률
+
   scanner:
     min-trade-price-24h: 5000000000   # 최소 24h 거래대금 (50억 KRW)
     max-coins: 20                     # 스캔 결과 최대 코인 수

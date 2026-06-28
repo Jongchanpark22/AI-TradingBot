@@ -423,7 +423,8 @@ public class PositionMonitor {
                         reason,
                         mp.atr,
                         mp.highestSeen,
-                        partialExit);
+                        partialExit,
+                        mp.signalId);  // Phase 0: 원래 매수 신호 ID 전달
             });
         } catch (Exception e) {
             log.error("[PositionMonitor] 거래 기록 저장 실패: symbol={}", mp.symbol, e);
@@ -548,6 +549,8 @@ public class PositionMonitor {
         final double initialStop;
         final double takeProfit;
         final double atr;
+        /** Phase 0: 이 포지션을 연 신호 ID — 청산 시 trade_history.signal_id로 전달 */
+        final String signalId;
 
         volatile double currentStop;
         volatile double highestSeen;
@@ -559,7 +562,7 @@ public class PositionMonitor {
         MonitoredPosition(Long positionId, String symbol, double entryPrice,
                           double initialStop, double currentStop, double takeProfit,
                           double highestSeen, double atr, boolean partialDone,
-                          BigDecimal quantity, boolean aboveProfitTarget) {
+                          BigDecimal quantity, boolean aboveProfitTarget, String signalId) {
             this.positionId = positionId;
             this.symbol = symbol;
             this.entryPrice = entryPrice;
@@ -571,6 +574,7 @@ public class PositionMonitor {
             this.partialDone = partialDone;
             this.quantity = quantity;
             this.aboveProfitTarget = aboveProfitTarget;
+            this.signalId = signalId;
         }
 
         static MonitoredPosition from(Position p) {
@@ -586,7 +590,7 @@ public class PositionMonitor {
             boolean aboveTarget = entry > 0 && highest >= entry * (1.0 + PROFIT_TARGET_RATE);
 
             return new MonitoredPosition(p.getId(), p.getSymbol(), entry,
-                    initStop, curStop, tp, highest, atr, partial, qty, aboveTarget);
+                    initStop, curStop, tp, highest, atr, partial, qty, aboveTarget, p.getSignalId());
         }
     }
 }
