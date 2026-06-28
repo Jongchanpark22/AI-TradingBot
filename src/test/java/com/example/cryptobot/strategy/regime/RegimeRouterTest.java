@@ -87,17 +87,19 @@ class RegimeRouterTest {
     }
 
     /** Test double: a strategy that always fires, used to isolate routing logic. */
-    private static class AlwaysFiresStrategy implements com.example.cryptobot.strategy.core.TradingStrategy {
-        private final String name;
-        AlwaysFiresStrategy(String name) { this.name = name; }
-        @Override public String name() { return name; }
+    private static class AlwaysFiresStrategy implements com.example.cryptobot.strategy.core.Strategy {
+        private final String stratId;
+        AlwaysFiresStrategy(String stratId) { this.stratId = stratId; }
+        @Override public String id() { return stratId; }
+        @Override public com.example.cryptobot.strategy.core.StrategyType type() {
+            return com.example.cryptobot.strategy.core.StrategyType.MEAN_REVERSION;
+        }
         @Override
-        public java.util.Optional<com.example.cryptobot.strategy.risk.EntryPlan> evaluate(
-                List<Candle> candles, double equity,
-                com.example.cryptobot.strategy.risk.RiskManager risk) {
-            return java.util.Optional.of(
-                    new com.example.cryptobot.strategy.risk.EntryPlan(
-                            1, 100, 99, 102, 1, 2, 1));
+        public java.util.Optional<com.example.cryptobot.strategy.core.StrategySignal> evaluate(List<Candle> candles) {
+            return java.util.Optional.of(new com.example.cryptobot.strategy.core.StrategySignal(
+                    com.example.cryptobot.strategy.core.StrategySignal.Direction.LONG,
+                    100.0, 1.0, stratId,
+                    com.example.cryptobot.strategy.core.StrategyType.MEAN_REVERSION));
         }
     }
 
