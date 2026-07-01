@@ -1,10 +1,11 @@
 package com.example.cryptobot.strategy.trend;
 
 import com.example.cryptobot.market.candle.Candle;
-import com.example.cryptobot.strategy.core.TradingStrategy;
+import com.example.cryptobot.strategy.core.Strategy;
+import com.example.cryptobot.strategy.core.StrategySignal;
+import com.example.cryptobot.strategy.core.StrategyType;
 import com.example.cryptobot.strategy.indicator.Indicators;
-import com.example.cryptobot.strategy.risk.EntryPlan;
-import com.example.cryptobot.strategy.risk.RiskManager;
+import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Optional;
@@ -32,11 +33,10 @@ import java.util.Optional;
  *         crypto.</li>
  * </ol>
  *
- * <p>Position sizing, stop placement, and trailing are entirely delegated to
- * the {@link RiskManager} (Phase 2). This strategy never makes a sizing or
- * exit decision on its own.
+ * <p>포지션 사이징, 손절, 트레일링은 {@code RegimeRouter}가 {@code RiskManager}에 위임한다.
  */
-public final class DonchianBreakoutStrategy implements TradingStrategy {
+@Component
+public final class DonchianBreakoutStrategy implements Strategy {
 
     private final int donchianPeriod;
     private final int atrPeriod;
@@ -65,12 +65,17 @@ public final class DonchianBreakoutStrategy implements TradingStrategy {
     }
 
     @Override
-    public String name() {
+    public String id() {
         return "DonchianBreakout(" + donchianPeriod + ")";
     }
 
     @Override
-    public Optional<EntryPlan> evaluate(List<Candle> candles, double equity, RiskManager risk) {
+    public StrategyType type() {
+        return StrategyType.BREAKOUT;
+    }
+
+    @Override
+    public Optional<StrategySignal> evaluate(List<Candle> candles) {
         int needed = Math.max(donchianPeriod + 1,
                 Math.max(2 * atrPeriod + 1, supertrendPeriod + 2));
         if (candles == null || candles.size() < needed) return Optional.empty();
@@ -92,9 +97,7 @@ public final class DonchianBreakoutStrategy implements TradingStrategy {
         if (Double.isNaN(volAvg) || volAvg <= 0) return Optional.empty();
         if (last.getVolume().doubleValue() < volAvg * minVolumeRatio) return Optional.empty();
 
-        // 4) Hand off to risk manager
         double atr = Indicators.atr(candles, atrPeriod);
-        EntryPlan plan = risk.planLong(equity, close, atr);
-        return plan.isExecutable() ? Optional.of(plan) : Optional.empty();
+        return Optional.of(new StrategySignal(StrategySignal.Direction.LONG, close, atr, id(), type()));
     }
 }

@@ -1,9 +1,7 @@
 package com.example.cryptobot.strategy.range;
 
 import com.example.cryptobot.market.candle.Candle;
-import com.example.cryptobot.strategy.risk.EntryPlan;
-import com.example.cryptobot.strategy.risk.RiskManager;
-import com.example.cryptobot.strategy.risk.RiskParameters;
+import com.example.cryptobot.strategy.core.StrategySignal;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
@@ -23,7 +21,6 @@ import static org.junit.jupiter.api.Assertions.*;
 class MeanReversionStrategyTest {
 
     private final MeanReversionStrategy strategy = new MeanReversionStrategy();
-    private final RiskManager risk = new RiskManager(RiskParameters.defaults());
 
     private static Candle bar(double o, double h, double l, double c) {
         return Candle.builder()
@@ -62,12 +59,12 @@ class MeanReversionStrategyTest {
 
     @Test
     void firesOnOversoldGreenReversal() {
-        Optional<EntryPlan> plan = strategy.evaluate(overSoldThenGreen(), 10_000, risk);
-        assertTrue(plan.isPresent(), "MeanReversionStrategy should fire on textbook setup");
-        EntryPlan p = plan.get();
-        assertTrue(p.isExecutable());
-        assertTrue(p.stopLossPrice() < p.entryPrice());
-        assertTrue(p.takeProfitPrice() > p.entryPrice());
+        Optional<StrategySignal> signal = strategy.evaluate(overSoldThenGreen());
+        assertTrue(signal.isPresent(), "MeanReversionStrategy should fire on textbook setup");
+        StrategySignal s = signal.get();
+        assertEquals(StrategySignal.Direction.LONG, s.direction());
+        assertTrue(s.atr() > 0);
+        assertTrue(s.entryPrice() > 0);
     }
 
     @Test
@@ -80,7 +77,7 @@ class MeanReversionStrategyTest {
                 last.getHighPrice().doubleValue(),
                 last.getLowPrice().doubleValue(),
                 last.getClosePrice().doubleValue()));
-        assertTrue(strategy.evaluate(c, 10_000, risk).isEmpty());
+        assertTrue(strategy.evaluate(c).isEmpty());
     }
 
     @Test
@@ -94,13 +91,13 @@ class MeanReversionStrategyTest {
             c.add(bar(open, close + 0.2, open - 0.2, close));
             price = close;
         }
-        assertTrue(strategy.evaluate(c, 10_000, risk).isEmpty());
+        assertTrue(strategy.evaluate(c).isEmpty());
     }
 
     @Test
     void doesNotFireWithInsufficientHistory() {
         List<Candle> c = new ArrayList<>();
         for (int i = 0; i < 5; i++) c.add(bar(100, 101, 99, 100.5));
-        assertTrue(strategy.evaluate(c, 10_000, risk).isEmpty());
+        assertTrue(strategy.evaluate(c).isEmpty());
     }
 }

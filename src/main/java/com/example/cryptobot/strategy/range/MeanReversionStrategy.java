@@ -1,10 +1,11 @@
 package com.example.cryptobot.strategy.range;
 
 import com.example.cryptobot.market.candle.Candle;
-import com.example.cryptobot.strategy.core.TradingStrategy;
+import com.example.cryptobot.strategy.core.Strategy;
+import com.example.cryptobot.strategy.core.StrategySignal;
+import com.example.cryptobot.strategy.core.StrategyType;
 import com.example.cryptobot.strategy.indicator.Indicators;
-import com.example.cryptobot.strategy.risk.EntryPlan;
-import com.example.cryptobot.strategy.risk.RiskManager;
+import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Optional;
@@ -28,10 +29,10 @@ import java.util.Optional;
  *         own open. Filters out the "knife still falling" failure mode.</li>
  * </ol>
  *
- * <p>Just like the trend strategy, sizing/stop/exit are delegated entirely to
- * the {@link RiskManager}; this class never makes a money decision.
+ * <p>포지션 사이징/손절은 {@code RegimeRouter}가 {@code RiskManager}에 위임한다.
  */
-public final class MeanReversionStrategy implements TradingStrategy {
+@Component
+public final class MeanReversionStrategy implements Strategy {
 
     private final int bbPeriod;
     private final double bbStdDev;
@@ -52,12 +53,17 @@ public final class MeanReversionStrategy implements TradingStrategy {
     }
 
     @Override
-    public String name() {
+    public String id() {
         return "MeanReversion(BB" + bbPeriod + "/RSI" + rsiPeriod + ")";
     }
 
     @Override
-    public Optional<EntryPlan> evaluate(List<Candle> candles, double equity, RiskManager risk) {
+    public StrategyType type() {
+        return StrategyType.MEAN_REVERSION;
+    }
+
+    @Override
+    public Optional<StrategySignal> evaluate(List<Candle> candles) {
         int needed = Math.max(bbPeriod + 1, Math.max(rsiPeriod + 1, 2 * atrPeriod + 1));
         if (candles == null || candles.size() < needed) return Optional.empty();
 
@@ -76,9 +82,8 @@ public final class MeanReversionStrategy implements TradingStrategy {
         // 3) Bullish reversal candle (close > open)
         if (last.getClosePrice().compareTo(last.getOpenPrice()) <= 0) return Optional.empty();
 
-        // 4) Risk-managed plan at the close
         double atr = Indicators.atr(candles, atrPeriod);
-        EntryPlan plan = risk.planLong(equity, last.getClosePrice().doubleValue(), atr);
-        return plan.isExecutable() ? Optional.of(plan) : Optional.empty();
+        double close = last.getClosePrice().doubleValue();
+        return Optional.of(new StrategySignal(StrategySignal.Direction.LONG, close, atr, id(), type()));
     }
 }

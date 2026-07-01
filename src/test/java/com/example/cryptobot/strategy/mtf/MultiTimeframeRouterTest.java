@@ -1,11 +1,12 @@
 package com.example.cryptobot.strategy.mtf;
 
 import com.example.cryptobot.market.candle.Candle;
-import com.example.cryptobot.strategy.core.TradingStrategy;
+import com.example.cryptobot.strategy.core.Strategy;
+import com.example.cryptobot.strategy.core.StrategySignal;
+import com.example.cryptobot.strategy.core.StrategyType;
 import com.example.cryptobot.strategy.range.MeanReversionStrategy;
 import com.example.cryptobot.strategy.regime.RegimeClassifier;
 import com.example.cryptobot.strategy.regime.RegimeRouter;
-import com.example.cryptobot.strategy.risk.EntryPlan;
 import com.example.cryptobot.strategy.risk.RiskManager;
 import com.example.cryptobot.strategy.risk.RiskParameters;
 import com.example.cryptobot.strategy.trend.DonchianBreakoutStrategy;
@@ -72,11 +73,12 @@ class MultiTimeframeRouterTest {
         return out;
     }
 
-    /** Stub strategy that always returns a plan. */
-    private static class AlwaysFires implements TradingStrategy {
-        @Override public String name() { return "Stub"; }
-        @Override public Optional<EntryPlan> evaluate(List<Candle> c, double e, RiskManager r) {
-            return Optional.of(new EntryPlan(1, 100, 99, 102, 1, 2, 1));
+    /** Stub strategy that always returns a signal. */
+    private static class AlwaysFires implements Strategy {
+        @Override public String id() { return "Stub"; }
+        @Override public StrategyType type() { return StrategyType.BREAKOUT; }
+        @Override public Optional<StrategySignal> evaluate(List<Candle> c) {
+            return Optional.of(new StrategySignal(StrategySignal.Direction.LONG, 100.0, 1.0, "Stub", StrategyType.BREAKOUT));
         }
     }
 
