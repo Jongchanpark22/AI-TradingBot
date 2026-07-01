@@ -71,6 +71,10 @@ public class Position extends BaseEntity {
     @Builder.Default
     private Boolean partialExitDone = false;
 
+    /** Phase 0: 이 포지션을 연 신호 ID — 청산 시 trade_history.signal_id로 전달 */
+    @Column(name = "signal_id", length = 36)
+    private String signalId;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private PositionStatus status;

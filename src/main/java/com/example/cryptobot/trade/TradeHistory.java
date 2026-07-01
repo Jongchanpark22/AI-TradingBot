@@ -94,6 +94,10 @@ public class TradeHistory extends BaseEntity {
     @Builder.Default
     private Boolean partialExit = false;
 
+    /** Phase 0: 이 거래를 유발한 신호 ID — strategy_run_logs.signal_id와 조인하여 feature-결과 연결 */
+    @Column(name = "signal_id", length = 36)
+    private String signalId;
+
     public enum ExitType {
         STOP_LOSS,       // 손절
         TRAILING_STOP,   // 트레일링 스탑

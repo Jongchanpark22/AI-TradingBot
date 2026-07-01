@@ -14,8 +14,9 @@ import com.example.cryptobot.order.OrderService;
 import com.example.cryptobot.portfolio.Position;
 import com.example.cryptobot.portfolio.PositionRepository;
 import com.example.cryptobot.risk.RiskService;
-import com.example.cryptobot.strategy.core.StrategyRunLog;
-import com.example.cryptobot.strategy.core.StrategyRunLogRepository;
+import com.example.cryptobot.strategy.ai.AiSignalGate;
+import com.example.cryptobot.strategy.ai.dto.FeatureSnapshot;
+import com.example.cryptobot.strategy.core.StrategyRunLogService;
 import com.example.cryptobot.strategy.indicator.Indicators;
 import com.example.cryptobot.strategy.monitor.PositionMonitor;
 import com.example.cryptobot.strategy.regime.MarketRegime;
@@ -33,6 +34,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 @Slf4j
 @Service
@@ -44,13 +46,14 @@ public class HybridStrategyExecutor {
     private final PositionRepository positionRepository;
     private final OrderService orderService;
     private final RiskService riskService;
-    private final StrategyRunLogRepository strategyRunLogRepository;
+    private final StrategyRunLogService strategyRunLogService;
     private final MarketScannerService marketScannerService;
     private final AccountService accountService;
     private final UpbitMarketService upbitMarketService;
     private final UpbitApiClient upbitApiClient;
     private final PositionMonitor positionMonitor;
     private final TradeHistoryService tradeHistoryService;
+    private final AiSignalGate aiSignalGate;
 
     // ---- 리스크 파라미터 (application.yml에서 설정) ----
     @Value("${trading.risk.stop-loss-percent:5.0}")
@@ -133,6 +136,11 @@ public class HybridStrategyExecutor {
             int candleUnit,
             String periodName) {
 
+        // Phase 0: 이 심볼 평가 전체를 추적하는 신호 ID — 조기 종료 포함 모든 경로에서 사용
+        String signalId = UUID.randomUUID().toString();
+        FeatureSnapshot snap = null;
+        AiSignalGate.Decision aiDecision = null;
+
         // 최신 캔들 및 티커를 업비트 API에서 먼저 fetch해서 DB 갱신
         upbitMarketService.getAndSaveCandles(symbol, candleUnit, 50);
         upbitMarketService.getAndSaveTicker(symbol);
@@ -143,7 +151,8 @@ public class HybridStrategyExecutor {
         if (candles == null || candles.size() < 50) {
             log.warn("[{}] 캔들 데이터 부족: {}, 개수: {}",
                     periodName, symbol, candles != null ? candles.size() : 0);
-            saveRunLog(symbol, periodName, null, null, null, null, null,
+            strategyRunLogService.save(signalId, null, null,
+                    symbol, periodName, null, null, null, null, null,
                     null, null, null, null, null,
                     "NO_SIGNAL", 0, "캔들 데이터 부족", false, "캔들 데이터 부족");
             return;
@@ -163,7 +172,8 @@ public class HybridStrategyExecutor {
                 TechnicalIndicatorCalculator.calculateMACD(closePrices);
         if (macdValues == null) {
             log.warn("[{}] MACD 계산 불가: {}", periodName, symbol);
-            saveRunLog(symbol, periodName, ema12, ema26, sma50, null, null,
+            strategyRunLogService.save(signalId, null, null,
+                    symbol, periodName, ema12, ema26, sma50, null, null,
                     null, null, null, null, null,
                     "NO_SIGNAL", 0, "MACD 계산 불가", false, "MACD 계산 불가");
             return;
@@ -232,8 +242,47 @@ public class HybridStrategyExecutor {
         HybridSignalAnalyzer.TradeSignal tradeSignal = signalAnalyzer.generateTradeSignal(
                 trend, momentum, rsiSignal, volumeSignal, candleSignal);
 
+        // ---- [Phase 0] AI 게이트: 룰 신호 산출 직후, 기존 필터 적용 전 ----
+        boolean ruleSaysBuy = tradeSignal.getSignal() == HybridSignalAnalyzer.SignalType.BUY
+                || tradeSignal.getSignal() == HybridSignalAnalyzer.SignalType.STRONG_BUY;
+        snap = FeatureSnapshot.builder()
+                .symbol(symbol)
+                .period(periodName)
+                .ema12(ema12)
+                .ema26(ema26)
+                .sma50(sma50)
+                .macd(macdValues.getMacd())
+                .macdSignal(macdValues.getSignalLine())
+                .macdHistogram(macdValues.getHistogram())
+                .rsi(rsi)
+                .volumeRatio(volumeRatio)
+                .atr(atrValue)
+                .regime(regime.name())
+                .trendSignal(trend.name())
+                .momentumSignal(momentum.name())
+                .rsiSignal(rsiSignal.name())
+                .volumeSignal(volumeSignal.name())
+                .candleSignal(candleSignal.name())
+                .rawSignal(tradeSignal.getSignal().name())
+                .signalScore(tradeSignal.getScore())
+                .build();
+        aiDecision = aiSignalGate.evaluate(ruleSaysBuy, snap);
+        // ---- end [Phase 0] ----
+
         // ---- 레짐 필터: 명확한 횡보장(ADX<20)만 차단. NEUTRAL(ADX 20~25)은 초기 트렌드 포착 허용 ----
         HybridSignalAnalyzer.TradeSignal filteredSignal = tradeSignal;
+
+        // ENSEMBLE 모드에서 AI가 차단한 경우 → NO_SIGNAL로 변환 (기존 필터들도 계속 적용)
+        if (!aiDecision.enterAllowed() && ruleSaysBuy) {
+            String aiReason = aiDecision.prediction() != null
+                    ? String.format("AI 게이트 차단: ML 확률=%.3f", aiDecision.prediction().getBuyProbability())
+                    : "AI 게이트 차단 (ML 미사용)";
+            filteredSignal = HybridSignalAnalyzer.TradeSignal.builder()
+                    .signal(HybridSignalAnalyzer.SignalType.NO_SIGNAL)
+                    .confidence(0)
+                    .reason(aiReason)
+                    .build();
+        }
         if (regime == MarketRegime.RANGING
                 && (tradeSignal.getSignal() == HybridSignalAnalyzer.SignalType.BUY
                     || tradeSignal.getSignal() == HybridSignalAnalyzer.SignalType.STRONG_BUY)) {
@@ -283,7 +332,8 @@ public class HybridStrategyExecutor {
         Optional<Ticker> tickerOpt = tickerRepository.findBySymbol(symbol);
         if (tickerOpt.isEmpty()) {
             log.warn("[{}] 시세 정보 없음: {}", periodName, symbol);
-            saveRunLog(symbol, periodName, ema12, ema26, sma50, rsi, volumeRatio,
+            strategyRunLogService.save(signalId, snap, aiDecision,
+                    symbol, periodName, ema12, ema26, sma50, rsi, volumeRatio,
                     trend, momentum, rsiSignal, volumeSignal, candleSignal,
                     tradeSignal.getSignal().name(), tradeSignal.getConfidence(),
                     tradeSignal.getReason(), false, "시세 정보 없음");
@@ -306,9 +356,10 @@ public class HybridStrategyExecutor {
             log.info("[{}] EMA 이격 필터: {} — {}", periodName, symbol, filteredSignal.getReason());
         }
 
-        boolean orderCreated = executeTradeSignal(account, symbol, currentPrice, filteredSignal, atrValue);
+        boolean orderCreated = executeTradeSignal(account, symbol, currentPrice, filteredSignal, atrValue, signalId);
 
-        saveRunLog(symbol, periodName, ema12, ema26, sma50, rsi, volumeRatio,
+        strategyRunLogService.save(signalId, snap, aiDecision,
+                symbol, periodName, ema12, ema26, sma50, rsi, volumeRatio,
                 trend, momentum, rsiSignal, volumeSignal, candleSignal,
                 filteredSignal.getSignal().name(), filteredSignal.getConfidence(),
                 filteredSignal.getReason(), orderCreated, null);
@@ -321,7 +372,8 @@ public class HybridStrategyExecutor {
             String symbol,
             BigDecimal currentPrice,
             HybridSignalAnalyzer.TradeSignal signal,
-            double atrValue) {
+            double atrValue,
+            String signalId) {
 
         TradeExecutionEngine.TradingParameters params = TradeExecutionEngine.TradingParameters.builder()
                 .riskPerTrade(riskPerTrade)
@@ -336,10 +388,10 @@ public class HybridStrategyExecutor {
                 .build();
 
         return switch (signal.getSignal()) {
-            case STRONG_BUY, BUY -> executeBuySignal(account, symbol, currentPrice, signal, params, atrValue);
+            case STRONG_BUY, BUY -> executeBuySignal(account, symbol, currentPrice, signal, params, atrValue, signalId);
             // SELL은 15분봉 노이즈가 많아 즉시 청산하지 않음 — trailing stop이 포지션 관리
             // STRONG_SELL(bearishScore≥4 + VERY_HIGH volume)만 즉시 청산
-            case STRONG_SELL -> executeSellSignal(account, symbol, currentPrice);
+            case STRONG_SELL -> executeSellSignal(account, symbol, currentPrice, signalId);
             default -> false;
         };
     }
@@ -350,7 +402,8 @@ public class HybridStrategyExecutor {
             BigDecimal currentPrice,
             HybridSignalAnalyzer.TradeSignal signal,
             TradeExecutionEngine.TradingParameters params,
-            double atrValue) {
+            double atrValue,
+            String signalId) {
 
         try {
             RiskService.RiskCheckResult riskResult = riskService.validateBuy(
@@ -417,6 +470,7 @@ public class HybridStrategyExecutor {
                     .takeProfitPrice(takeProfit)
                     .highestPriceSinceEntry(price)
                     .atrAtEntry(atrValue)
+                    .signalId(signalId)  // Phase 0: 청산 시 trade_history로 전달
                     .status(Position.PositionStatus.OPEN)
                     .build();
 
@@ -434,7 +488,7 @@ public class HybridStrategyExecutor {
         return false;
     }
 
-    private boolean executeSellSignal(Account account, String symbol, BigDecimal currentPrice) {
+    private boolean executeSellSignal(Account account, String symbol, BigDecimal currentPrice, String signalId) {
         try {
             Optional<Position> positionOpt = positionRepository
                     .findActiveByAccountAndSymbol(account, symbol);
@@ -468,7 +522,7 @@ public class HybridStrategyExecutor {
             orderService.createOrder(order);
             log.info("✓ 매도 주문 생성: {}, 수량: {}, UUID: {}", symbol, position.getQuantity(), upbitOrder.getUuid());
 
-            // 거래 기록 저장
+            // 거래 기록 저장 — 원래 매수 신호 ID를 position에서 읽어 연결
             tradeHistoryService.record(
                     account,
                     symbol,
@@ -480,7 +534,8 @@ public class HybridStrategyExecutor {
                     "전략 매도 신호",
                     position.getAtrAtEntry(),
                     position.getHighestPriceSinceEntry(),
-                    false);
+                    false,
+                    position.getSignalId());  // Phase 0: 원래 매수 신호 ID
 
             return true;
 
@@ -568,49 +623,4 @@ public class HybridStrategyExecutor {
         return bullish;
     }
 
-    // ---- 로그 저장 ----
-
-    private void saveRunLog(
-            String symbol,
-            String periodName,
-            Double ema12,
-            Double ema26,
-            Double sma50,
-            Double rsi,
-            Double volumeRatio,
-            HybridSignalAnalyzer.TrendSignal trend,
-            HybridSignalAnalyzer.MomentumSignal momentum,
-            HybridSignalAnalyzer.RSISignal rsiSignal,
-            HybridSignalAnalyzer.VolumeSignal volumeSignal,
-            HybridSignalAnalyzer.CandleSignal candleSignal,
-            String finalSignal,
-            Integer confidence,
-            String reason,
-            boolean orderCreated,
-            String blockedReason) {
-
-        StrategyRunLog logEntity = StrategyRunLog.builder()
-                .strategyId(null)
-                .strategyName("AUTO_SCANNER")
-                .symbol(symbol)
-                .period(periodName)
-                .ema12(ema12)
-                .ema26(ema26)
-                .sma50(sma50)
-                .rsi(rsi)
-                .volumeRatio(volumeRatio)
-                .trendSignal(trend != null ? trend.name() : "UNKNOWN")
-                .momentumSignal(momentum != null ? momentum.name() : "UNKNOWN")
-                .rsiSignal(rsiSignal != null ? rsiSignal.name() : "UNKNOWN")
-                .volumeSignal(volumeSignal != null ? volumeSignal.name() : "UNKNOWN")
-                .candleSignal(candleSignal != null ? candleSignal.name() : "UNKNOWN")
-                .finalSignal(finalSignal)
-                .confidence(confidence)
-                .reason(reason)
-                .orderCreated(orderCreated)
-                .blockedReason(blockedReason)
-                .build();
-
-        strategyRunLogRepository.save(logEntity);
-    }
 }

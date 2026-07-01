@@ -46,7 +46,8 @@ public class TradeHistoryService {
             String exitReason,
             Double atrAtEntry,
             Double highestPrice,
-            boolean partialExit) {
+            boolean partialExit,
+            String signalId) {
 
         if (entryPrice == null || exitPrice == null || quantity == null
                 || entryPrice.compareTo(BigDecimal.ZERO) <= 0
@@ -81,6 +82,7 @@ public class TradeHistoryService {
                 .atrAtEntry(atrAtEntry)
                 .highestPrice(highestPrice)
                 .partialExit(partialExit)
+                .signalId(signalId)
                 .build();
 
         TradeHistory saved = repository.save(history);
