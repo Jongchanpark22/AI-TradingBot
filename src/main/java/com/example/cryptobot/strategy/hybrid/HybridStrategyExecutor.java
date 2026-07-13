@@ -15,6 +15,7 @@ import com.example.cryptobot.portfolio.Position;
 import com.example.cryptobot.portfolio.PositionRepository;
 import com.example.cryptobot.risk.RiskService;
 import com.example.cryptobot.strategy.ai.AiSignalGate;
+import com.example.cryptobot.strategy.ai.FeatureSnapshotFactory;
 import com.example.cryptobot.strategy.ai.dto.FeatureSnapshot;
 import com.example.cryptobot.strategy.core.StrategyRunLogService;
 import com.example.cryptobot.strategy.indicator.Indicators;
@@ -245,27 +246,12 @@ public class HybridStrategyExecutor {
         // ---- [Phase 0] AI 게이트: 룰 신호 산출 직후, 기존 필터 적용 전 ----
         boolean ruleSaysBuy = tradeSignal.getSignal() == HybridSignalAnalyzer.SignalType.BUY
                 || tradeSignal.getSignal() == HybridSignalAnalyzer.SignalType.STRONG_BUY;
-        snap = FeatureSnapshot.builder()
-                .symbol(symbol)
-                .period(periodName)
-                .ema12(ema12)
-                .ema26(ema26)
-                .sma50(sma50)
-                .macd(macdValues.getMacd())
-                .macdSignal(macdValues.getSignalLine())
-                .macdHistogram(macdValues.getHistogram())
-                .rsi(rsi)
-                .volumeRatio(volumeRatio)
-                .atr(atrValue)
-                .regime(regime.name())
-                .trendSignal(trend.name())
-                .momentumSignal(momentum.name())
-                .rsiSignal(rsiSignal.name())
-                .volumeSignal(volumeSignal.name())
-                .candleSignal(candleSignal.name())
-                .rawSignal(tradeSignal.getSignal().name())
-                .signalScore(tradeSignal.getScore())
-                .build();
+        snap = FeatureSnapshotFactory.build(
+                symbol, periodName, candles,
+                ema12, ema26, sma50,
+                macdValues.getMacd(), macdValues.getSignalLine(), macdValues.getHistogram(),
+                rsi, volumeRatio, atrValue,
+                regime, trend, momentum, rsiSignal, volumeSignal, candleSignal, tradeSignal);
         aiDecision = aiSignalGate.evaluate(ruleSaysBuy, snap);
         // ---- end [Phase 0] ----
 

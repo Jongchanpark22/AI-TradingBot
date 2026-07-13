@@ -98,6 +98,11 @@ public class TradeHistory extends BaseEntity {
     @Column(name = "signal_id", length = 36)
     private String signalId;
 
+    /** Task C: 데이터 출처 (LIVE / BACKTEST / PAPER). ML 학습 데이터 필터링용. */
+    @Column(length = 16)
+    @Builder.Default
+    private String source = "LIVE";
+
     public enum ExitType {
         STOP_LOSS,       // 손절
         TRAILING_STOP,   // 트레일링 스탑

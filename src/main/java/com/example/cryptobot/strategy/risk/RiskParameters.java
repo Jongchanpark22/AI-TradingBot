@@ -6,8 +6,8 @@ package com.example.cryptobot.strategy.risk;
  * <p>Defaults are picked to be conservative on crypto:
  * <ul>
  *     <li>{@code riskPerTrade = 0.01} — 1% of equity at risk per trade.</li>
- *     <li>{@code stopAtrMultiplier = 1.5} — initial stop = entry − 1.5·ATR.</li>
- *     <li>{@code takeProfitRMultiple = 2.0} — final TP at 2R (i.e. risk·2 in profit).</li>
+ *     <li>{@code stopAtrMultiplier = 2.5} — initial stop = entry − 2.5·ATR (라이브 executor 동일).</li>
+ *     <li>{@code takeProfitRMultiple = 2.0} — TP = entry + 2.5·ATR × 2.0 = entry + 5.0·ATR (라이브 동일).</li>
  *     <li>{@code partialExitRMultiple = 1.0} — close half at 1R, move stop to break-even.</li>
  *     <li>{@code trailingAtrMultiplier = 3.0} — Chandelier trail = highestHigh − 3·ATR.</li>
  *     <li>{@code maxDailyLoss = 0.05} — kill switch at -5% equity per day.</li>
@@ -24,7 +24,7 @@ public record RiskParameters(
         int maxOpenPositions
 ) {
     public static RiskParameters defaults() {
-        return new RiskParameters(0.01, 1.5, 2.0, 1.0, 3.0, 0.05, 3);
+        return new RiskParameters(0.01, 2.5, 2.0, 1.0, 3.0, 0.05, 3);
     }
 
     /** Validate inputs. Throws {@link IllegalArgumentException} on bad config. */

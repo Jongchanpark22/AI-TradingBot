@@ -14,14 +14,14 @@ class RiskManagerTest {
 
     @Test
     void planLongSizesQuantityFromRiskFractionAndAtr() {
-        // equity 10,000, risk 1% -> $100 at risk
-        // ATR 2.0, multiplier 1.5 -> stop distance 3.0
-        // qty = 100 / 3 = 33.333...
+        // equity 10,000, risk 1% -> 100 at risk
+        // ATR 2.0, multiplier 2.5 -> stop distance 5.0 (라이브 executor와 동일)
+        // qty = 100 / 5 = 20.0
         EntryPlan p = risk.planLong(10_000, 100.0, 2.0);
         assertTrue(p.isExecutable());
-        assertEquals(100.0 - 3.0, p.stopLossPrice(), 1e-9);
-        assertEquals(100.0 + 6.0, p.takeProfitPrice(), 1e-9); // 2R
-        assertEquals(100.0 / 3.0, p.quantity(), 1e-9);
+        assertEquals(100.0 - 5.0, p.stopLossPrice(), 1e-9);
+        assertEquals(100.0 + 10.0, p.takeProfitPrice(), 1e-9); // 2R = 5.0 × 2 = 10.0 (TP 5×ATR과 동일)
+        assertEquals(100.0 / 5.0, p.quantity(), 1e-9);
         assertEquals(100.0, p.riskAmount(), 1e-9);
         assertEquals(2.0, p.riskRewardRatio(), 1e-9); // 2R defaults
     }

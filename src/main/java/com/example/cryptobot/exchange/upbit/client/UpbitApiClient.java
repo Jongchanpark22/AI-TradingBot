@@ -108,22 +108,37 @@ public class UpbitApiClient {
     }
 
     /**
-     * 캔들 데이터 조회
+     * 캔들 데이터 조회 (최신 N개)
      *
      * @param market KRW-BTC, KRW-ETH 등
      * @param unit 분봉 단위 (1, 5, 15, 30, 60, 240)
-     * @param count 조회 개수
+     * @param count 조회 개수 (최대 200)
      */
     public List<UpbitCandleDto> getCandles(String market, int unit, int count) {
+        return getCandles(market, unit, count, null);
+    }
+
+    /**
+     * 캔들 데이터 조회 (페이지네이션 지원).
+     *
+     * @param market KRW-BTC, KRW-ETH 등
+     * @param unit   분봉 단위 (1, 5, 15, 30, 60, 240)
+     * @param count  조회 개수 (최대 200)
+     * @param to     이 시각 이전 캔들 조회 — ISO-8601 UTC 형식 (예: "2024-01-01T00:00:00Z").
+     *               null이면 최신 봉부터 조회.
+     */
+    public List<UpbitCandleDto> getCandles(String market, int unit, int count, String to) {
         try {
-            String url = UriComponentsBuilder
+            UriComponentsBuilder builder = UriComponentsBuilder
                     .fromHttpUrl(properties.getBaseUrl() + "/v1/candles/minutes/" + unit)
                     .queryParam("market", market)
-                    .queryParam("count", count)
-                    .toUriString();
+                    .queryParam("count", Math.min(count, 200));
+            if (to != null && !to.isBlank()) {
+                builder.queryParam("to", to);
+            }
 
             ResponseEntity<UpbitCandleDto[]> response = restTemplate.exchange(
-                    url,
+                    builder.toUriString(),
                     HttpMethod.GET,
                     null,
                     UpbitCandleDto[].class
@@ -131,13 +146,13 @@ public class UpbitApiClient {
 
             UpbitCandleDto[] body = response.getBody();
             if (body != null) {
-                log.debug("캔들 조회 성공: {} {}분봉 {} 개", market, unit, body.length);
+                log.debug("캔들 조회 성공: {} {}분봉 {} 개 (to={})", market, unit, body.length, to);
                 return Arrays.asList(body);
             }
 
             return List.of();
         } catch (Exception e) {
-            log.error("캔들 조회 실패: {} {}분봉", market, unit, e);
+            log.error("캔들 조회 실패: {} {}분봉 (to={})", market, unit, to, e);
             return List.of();
         }
     }
