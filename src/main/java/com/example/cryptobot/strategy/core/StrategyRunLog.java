@@ -81,4 +81,14 @@ public class StrategyRunLog extends BaseEntity {
     /** 추론에 사용된 ML 모델 버전. NULL이면 ML 미사용. */
     @Column(length = 64)
     private String mlModelVer;
+
+    // ---- Task C: 출처 구분 / 시간 인덱스 ----
+
+    /** 신호 발생 봉의 Unix 타임스탬프 (밀리초). Python data_loader SQL의 ORDER BY 기준. */
+    private Long timestampMs;
+
+    /** 데이터 출처: LIVE / BACKTEST / PAPER. 학습·분석 시 필터링용. */
+    @Column(length = 16)
+    @Builder.Default
+    private String source = "LIVE";
 }

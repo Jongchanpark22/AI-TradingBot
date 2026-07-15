@@ -13,8 +13,8 @@ import org.springframework.stereotype.Service;
 /**
  * 전략 실행 로그 저장 서비스.
  *
- * <p>HybridStrategyExecutor에서 로그 직렬화/저장 로직을 분리하여
- * FeatureSnapshot JSON 변환 및 AI 예측값 저장을 담당한다.
+ * <p>HybridStrategyExecutor / HybridBacktestEngine에서 로그 직렬화/저장 로직을 분리.
+ * FeatureSnapshot JSON 변환, AI 예측값 저장, source/timestampMs 기록을 담당한다.
  */
 @Slf4j
 @Service
@@ -27,26 +27,27 @@ public class StrategyRunLogService {
     /**
      * 전략 실행 결과를 저장한다. 진입 여부와 관계없이 항상 호출한다.
      *
-     * @param signalId    신호 고유 ID (UUID)
-     * @param snap        FeatureSnapshot (null이면 featureJson을 저장하지 않음)
-     * @param aiDecision  AI 게이트 결정 (null이면 ML 필드를 NULL로 저장)
-     * @param symbol      심볼
-     * @param period      타임프레임 이름
-     * @param ema12       EMA12
-     * @param ema26       EMA26
-     * @param sma50       SMA50
-     * @param rsi         RSI
-     * @param volumeRatio 거래량 비율
-     * @param trend       추세 신호
-     * @param momentum    모멘텀 신호
-     * @param rsiSignal   RSI 신호
+     * @param signalId     신호 고유 ID (UUID)
+     * @param snap         FeatureSnapshot (null이면 featureJson/timestampMs 생략)
+     * @param aiDecision   AI 게이트 결정 (null이면 ML 필드 NULL)
+     * @param symbol       심볼
+     * @param period       타임프레임 이름
+     * @param ema12        EMA12
+     * @param ema26        EMA26
+     * @param sma50        SMA50
+     * @param rsi          RSI
+     * @param volumeRatio  거래량 비율
+     * @param trend        추세 신호
+     * @param momentum     모멘텀 신호
+     * @param rsiSignal    RSI 신호
      * @param volumeSignal 거래량 신호
      * @param candleSignal 캔들 패턴 신호
-     * @param finalSignal 최종 신호명 (필터 적용 후)
-     * @param confidence  신뢰도
-     * @param reason      신호 사유
+     * @param finalSignal  최종 신호명 (필터 적용 후)
+     * @param confidence   신뢰도
+     * @param reason       신호 사유
      * @param orderCreated 주문 생성 여부
      * @param blockedReason 차단 사유 (없으면 null)
+     * @param source       데이터 출처 (LIVE / BACKTEST / PAPER)
      */
     public void save(
             String signalId,
@@ -68,13 +69,16 @@ public class StrategyRunLogService {
             Integer confidence,
             String reason,
             boolean orderCreated,
-            String blockedReason) {
+            String blockedReason,
+            String source) {
 
         // FeatureSnapshot → JSON 직렬화
         String featureJson = null;
+        Long timestampMs = null;
         if (snap != null) {
             try {
                 featureJson = objectMapper.writeValueAsString(snap);
+                timestampMs = snap.getTimestampMs() > 0 ? snap.getTimestampMs() : null;
             } catch (JsonProcessingException e) {
                 log.warn("[StrategyRunLog] FeatureSnapshot 직렬화 실패: {}", e.getMessage());
             }
@@ -88,6 +92,7 @@ public class StrategyRunLogService {
         StrategyRunLog entity = StrategyRunLog.builder()
                 .signalId(signalId)
                 .featureJson(featureJson)
+                .timestampMs(timestampMs)
                 .mlBuyProb(mlBuyProb)
                 .mlModelVer(mlModelVer)
                 .strategyName("AUTO_SCANNER")
@@ -108,8 +113,24 @@ public class StrategyRunLogService {
                 .reason(reason)
                 .orderCreated(orderCreated)
                 .blockedReason(blockedReason)
+                .source(source != null ? source : "LIVE")
                 .build();
 
         repository.save(entity);
+    }
+
+    /** 라이브 실행 경로의 편의 오버로드 — source 기본값 "LIVE". */
+    public void save(
+            String signalId, FeatureSnapshot snap, AiSignalGate.Decision aiDecision,
+            String symbol, String period,
+            Double ema12, Double ema26, Double sma50, Double rsi, Double volumeRatio,
+            HybridSignalAnalyzer.TrendSignal trend, HybridSignalAnalyzer.MomentumSignal momentum,
+            HybridSignalAnalyzer.RSISignal rsiSignal, HybridSignalAnalyzer.VolumeSignal volumeSignal,
+            HybridSignalAnalyzer.CandleSignal candleSignal,
+            String finalSignal, Integer confidence, String reason,
+            boolean orderCreated, String blockedReason) {
+        save(signalId, snap, aiDecision, symbol, period, ema12, ema26, sma50, rsi, volumeRatio,
+                trend, momentum, rsiSignal, volumeSignal, candleSignal,
+                finalSignal, confidence, reason, orderCreated, blockedReason, "LIVE");
     }
 }
