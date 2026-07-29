@@ -43,6 +43,10 @@ public final class FeatureSnapshotFactory {
      * @param candleSig     CandleSignal
      * @param tradeSignal   최종 TradeSignal (score, signal 포함)
      */
+    /**
+     * 시장 맥락 없이 FeatureSnapshot을 조립한다 (기존 호출부 호환).
+     * 내부적으로 market* 필드는 기본값(UNKNOWN / 0 / 0.0)으로 채운다.
+     */
     public static FeatureSnapshot build(
             String symbol,
             String timeframe,
@@ -56,7 +60,45 @@ public final class FeatureSnapshotFactory {
             HybridSignalAnalyzer.RSISignal rsiSig,
             HybridSignalAnalyzer.VolumeSignal volumeSig,
             HybridSignalAnalyzer.CandleSignal candleSig,
-            HybridSignalAnalyzer.TradeSignal tradeSignal) {
+            HybridSignalAnalyzer.TradeSignal tradeSignal,
+            String strategyId,
+            String strategyType) {
+        return build(symbol, timeframe, window,
+                ema12, ema26, sma50, macd, macdSignal, macdHist,
+                rsi14, volumeRatio, atr14,
+                regime, trend, momentum, rsiSig, volumeSig, candleSig, tradeSignal,
+                strategyId, strategyType,
+                "UNKNOWN", 0, 0.0, 0);
+    }
+
+    /**
+     * 시장 맥락(BTC context)을 포함하여 FeatureSnapshot을 조립한다.
+     *
+     * @param marketRegime  BTC 레짐 문자열 (TRENDING_UP / RANGING / NEUTRAL / TRENDING_DOWN)
+     * @param marketTrend   BTC EMA12 > EMA26 여부 (1/0)
+     * @param marketReturn  BTC 최근 20봉 수익률 (%)
+     * @param marketAboveMA BTC 현재가 > SMA50 여부 (1/0)
+     */
+    public static FeatureSnapshot build(
+            String symbol,
+            String timeframe,
+            List<Candle> window,
+            double ema12, double ema26, double sma50,
+            double macd, double macdSignal, double macdHist,
+            double rsi14, double volumeRatio, double atr14,
+            MarketRegime regime,
+            HybridSignalAnalyzer.TrendSignal trend,
+            HybridSignalAnalyzer.MomentumSignal momentum,
+            HybridSignalAnalyzer.RSISignal rsiSig,
+            HybridSignalAnalyzer.VolumeSignal volumeSig,
+            HybridSignalAnalyzer.CandleSignal candleSig,
+            HybridSignalAnalyzer.TradeSignal tradeSignal,
+            String strategyId,
+            String strategyType,
+            String marketRegime,
+            int marketTrend,
+            double marketReturn,
+            int marketAboveMA) {
 
         // 마지막 완성된 캔들 (인덱스 size-2: 최신 봉은 형성 중)
         Candle signalBar = window.size() >= 2 ? window.get(window.size() - 2) : window.get(window.size() - 1);
@@ -113,6 +155,12 @@ public final class FeatureSnapshotFactory {
                 .volumeConfidence(encodeVolume(volumeSig))
                 .totalScore(tradeSignal != null && tradeSignal.getScore() != null ? tradeSignal.getScore() : 0)
                 .ruleSignal(tradeSignal != null ? tradeSignal.getSignal().name() : "NO_SIGNAL")
+                .strategyId(strategyId != null ? strategyId : "UNKNOWN")
+                .strategyType(strategyType != null ? strategyType : "UNKNOWN")
+                .marketRegime(marketRegime != null ? marketRegime : "UNKNOWN")
+                .marketTrend(marketTrend)
+                .marketReturn(marketReturn)
+                .marketAboveMA(marketAboveMA)
                 .build();
     }
 

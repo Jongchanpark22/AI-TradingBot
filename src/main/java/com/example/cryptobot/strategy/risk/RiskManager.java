@@ -87,6 +87,15 @@ public final class RiskManager {
     /**
      * Compute the next trailing decision for an open long position.
      *
+     * <p>청산 사다리:
+     * <ol>
+     *   <li>+1R 도달 시 1차 부분청산 ({@code partialExitRatio}) + 손절 → 진입가(본전)</li>
+     *   <li>+2R 도달 시 2차 부분청산 ({@code partial2Ratio}) + 트레일링 강화 ({@code trailAtrMultAfterP2})</li>
+     *   <li>나머지 25%는 강화 트레일링으로 유지</li>
+     * </ol>
+     * 주의: 2차 부분청산은 {@code takeProfitRMultiple > partial2RMultiple}일 때만 정상 동작.
+     * (현재 TP=3R > P2=2R이므로 aboveProfitTarget 진입 전에 2차 청산이 먼저 실행됨.)
+     *
      * @param entryPrice           original fill price
      * @param initialStopLoss      original stop-loss price (from {@link EntryPlan})
      * @param currentStopLoss      stop-loss currently in force (may already
@@ -95,7 +104,8 @@ public final class RiskManager {
      * @param highestPriceSeen     highest price observed since the position
      *                             opened (caller maintains this)
      * @param atr                  current ATR (used for the chandelier offset)
-     * @param partialExitDone      true if the partial exit has already fired
+     * @param partialExitDone      true if the 1차 partial exit has already fired
+     * @param secondPartialDone    true if the 2차 partial exit has already fired
      */
     public TrailingDecision updateTrailing(
             double entryPrice,
@@ -104,36 +114,53 @@ public final class RiskManager {
             double currentPrice,
             double highestPriceSeen,
             double atr,
-            boolean partialExitDone
+            boolean partialExitDone,
+            boolean secondPartialDone
     ) {
-        // ---- 1. immediate stop-loss / take-profit hit -------------------
+        // ---- 1. immediate stop-loss hit -------------------
         if (currentPrice <= currentStopLoss) {
-            return new TrailingDecision(currentStopLoss, true, false, "stop-loss hit");
+            return new TrailingDecision(currentStopLoss, true, false, false, "stop-loss hit");
         }
 
-        // ---- 2. partial exit at +1R ------------------------------------
         double initialRisk = entryPrice - initialStopLoss;
+
+        // ---- 2. 1차 부분청산: +1R ------------------------------------
         if (!partialExitDone && initialRisk > 0) {
             double partialTarget = entryPrice + initialRisk * params.partialExitRMultiple();
             if (currentPrice >= partialTarget) {
-                // close half and ratchet stop to break-even
+                // 손절선 → 진입가(본전)로 이동
                 double newStop = Math.max(currentStopLoss, entryPrice);
-                return new TrailingDecision(newStop, false, true,
+                return new TrailingDecision(newStop, false, true, false,
                         "partial exit at " + params.partialExitRMultiple() + "R, stop -> break-even");
             }
         }
 
-        // ---- 3. chandelier trailing stop -------------------------------
-        // ATR이 0이면 최고가의 1.5% 고정 폴백 사용 (포지션 매입 시 atrAtEntry=0으로 저장되는 경우 대비)
+        // ---- 3. 2차 부분청산: +2R (1차 완료 후) ------------------------------------
+        if (partialExitDone && !secondPartialDone && initialRisk > 0 && params.partial2RMultiple() > 0) {
+            double secondTarget = entryPrice + initialRisk * params.partial2RMultiple();
+            if (currentPrice >= secondTarget) {
+                double newStop = Math.max(currentStopLoss, entryPrice);
+                return new TrailingDecision(newStop, false, false, true,
+                        "second partial exit at " + params.partial2RMultiple()
+                                + "R, trailing -> " + params.trailAtrMultAfterP2() + "xATR");
+            }
+        }
+
+        // ---- 4. 챈들리어 트레일링 -----------------------------------------------
+        // 2차 부분청산 완료 후: trailAtrMultAfterP2(강화), 미완료: trailingAtrMultiplier(기본)
+        // ATR이 0이면 최고가의 3% 고정 폴백 사용
         if (highestPriceSeen > entryPrice) {
+            double activeMult = secondPartialDone
+                    ? params.trailAtrMultAfterP2()
+                    : params.trailingAtrMultiplier();
             double trailingOffset = atr > 0
-                    ? params.trailingAtrMultiplier() * atr
-                    : highestPriceSeen * 0.03;  // ATR 없을 때 최고가 대비 3% 폴백 (기존 1.5% → 너무 타이트)
+                    ? activeMult * atr
+                    : highestPriceSeen * 0.03;
             double chandelier = highestPriceSeen - trailingOffset;
-            // monotonically non-decreasing
+            // 손절선은 단조증가 (절대 뒤로 이동하지 않음)
             double newStop = Math.max(currentStopLoss, chandelier);
             if (newStop > currentStopLoss) {
-                return new TrailingDecision(newStop, false, false, "trailing stop -> " + newStop);
+                return new TrailingDecision(newStop, false, false, false, "trailing stop -> " + newStop);
             }
         }
 

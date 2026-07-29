@@ -70,7 +70,8 @@ public class StrategyRunLogService {
             String reason,
             boolean orderCreated,
             String blockedReason,
-            String source) {
+            String source,
+            String strategyName) {
 
         // FeatureSnapshot → JSON 직렬화
         String featureJson = null;
@@ -95,7 +96,7 @@ public class StrategyRunLogService {
                 .timestampMs(timestampMs)
                 .mlBuyProb(mlBuyProb)
                 .mlModelVer(mlModelVer)
-                .strategyName("AUTO_SCANNER")
+                .strategyName(strategyName != null ? strategyName : "UNKNOWN")
                 .symbol(symbol)
                 .period(period)
                 .ema12(ema12)
@@ -119,7 +120,9 @@ public class StrategyRunLogService {
         repository.save(entity);
     }
 
-    /** 라이브 실행 경로의 편의 오버로드 — source 기본값 "LIVE". */
+    /**
+     * 라이브 실행 경로 편의 오버로드 — source="LIVE", strategyName="HYBRID".
+     */
     public void save(
             String signalId, FeatureSnapshot snap, AiSignalGate.Decision aiDecision,
             String symbol, String period,
@@ -131,6 +134,6 @@ public class StrategyRunLogService {
             boolean orderCreated, String blockedReason) {
         save(signalId, snap, aiDecision, symbol, period, ema12, ema26, sma50, rsi, volumeRatio,
                 trend, momentum, rsiSignal, volumeSignal, candleSignal,
-                finalSignal, confidence, reason, orderCreated, blockedReason, "LIVE");
+                finalSignal, confidence, reason, orderCreated, blockedReason, "LIVE", "HYBRID");
     }
 }

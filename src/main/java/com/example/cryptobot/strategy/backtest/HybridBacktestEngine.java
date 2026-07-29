@@ -14,6 +14,7 @@ import com.example.cryptobot.trade.TradeHistory;
 import com.example.cryptobot.trade.TradeHistoryRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -50,9 +51,29 @@ public class HybridBacktestEngine {
     private final TradeHistoryRepository tradeHistoryRepository;
 
     private static final int WINDOW_SIZE = 50;
-    private static final double SL_ATR_MULT  = 2.5;
-    private static final double TP_ATR_MULT  = 5.0;
-    private static final double TRAIL_ATR_MULT = 3.0;
+    private static final String STRATEGY_ID   = "HYBRID";
+    private static final String STRATEGY_TYPE = "COMPOSITE";
+
+    @Value("${backtest.fee-rate:0.0005}")
+    private double feeRate;
+
+    @Value("${backtest.slippage-rate:0.0003}")
+    private double slippageRate;
+
+    @Value("${trading.risk.stop-atr-mult:3.0}")
+    private double slAtrMult;
+
+    @Value("${trading.risk.take-profit-r:3.0}")
+    private double tpAtrR;
+
+    @Value("${trading.risk.trail-atr-mult:3.0}")
+    private double trailAtrMult;
+
+    @Value("${trading.risk.partial-exit-r:1.0}")
+    private double partialExitR;
+
+    @Value("${trading.risk.partial-exit-ratio:0.5}")
+    private double partialExitRatio;
 
     private final HybridSignalAnalyzer signalAnalyzer = new HybridSignalAnalyzer();
     private final RegimeClassifier regimeClassifier = new RegimeClassifier();
@@ -67,7 +88,9 @@ public class HybridBacktestEngine {
      * @return 백테스트 요약 결과
      */
     @Transactional
-    public BacktestResult run(String symbol, List<Candle> candles, String timeframe,
+    public BacktestResult run(String symbol, List<Candle> candles,
+                               @Nullable List<Candle> btcCandles,
+                               String timeframe,
                                @Nullable Account account) {
         if (candles == null || candles.size() <= WINDOW_SIZE + 1) {
             log.warn("[HybridBacktest] 캔들 부족: {} — {}개", symbol, candles == null ? 0 : candles.size());
@@ -101,26 +124,25 @@ public class HybridBacktestEngine {
                     equity = closeAndLog(pos, pos.currentStop, bar, "stop-loss", account,
                             symbol, equity, trades);
                     pos = null;
-                } else if (high >= pos.takeProfit) {
-                    // TP 터치: 보수적으로 TP가격 체결
+                } else if (pos.takeProfit > 0 && high >= pos.takeProfit) {
+                    // 하드 익절 (take-profit-r > 0일 때만)
                     equity = closeAndLog(pos, pos.takeProfit, bar, "take-profit", account,
                             symbol, equity, trades);
                     pos = null;
                 } else {
-                    // 부분 청산(1R): 초기 리스크의 1배 수익 달성 시 50% 청산
+                    // 부분청산: +partialExitR 달성 시 partialExitRatio 비율 청산
                     double initialRisk = pos.entryPrice - pos.initialStop;
                     if (!pos.partialDone && initialRisk > 0
-                            && close >= pos.entryPrice + initialRisk) {
-                        double realised = (close - pos.entryPrice) * (pos.quantity / 2.0);
-                        equity += realised;
-                        pos.quantity /= 2.0;
+                            && close >= pos.entryPrice + partialExitR * initialRisk) {
+                        double partialQty = pos.quantity * partialExitRatio;
+                        equity += (close - pos.entryPrice) * partialQty;
+                        pos.quantity -= partialQty;
                         pos.partialDone = true;
-                        // 손절을 매수가로 이동 (무위험 거래)
                         pos.currentStop = Math.max(pos.currentStop, pos.entryPrice);
                     }
                     // 챈들리어 트레일링
                     if (pos.highestSeen > pos.entryPrice) {
-                        double chandelier = pos.highestSeen - TRAIL_ATR_MULT * atr;
+                        double chandelier = pos.highestSeen - trailAtrMult * atr;
                         double newStop = Math.max(pos.currentStop, chandelier);
                         if (newStop > pos.currentStop) {
                             pos.currentStop = newStop;
@@ -150,7 +172,8 @@ public class HybridBacktestEngine {
                             sr.finalSignal.getSignal() == HybridSignalAnalyzer.SignalType.BUY
                                     || sr.finalSignal.getSignal() == HybridSignalAnalyzer.SignalType.STRONG_BUY,
                             sr.blockedReason,
-                            "BACKTEST");
+                            "BACKTEST",
+                            STRATEGY_ID);
 
                     // 필터 통과 신호만 포지션 진입
                     boolean enters = sr.finalSignal.getSignal() == HybridSignalAnalyzer.SignalType.BUY
@@ -161,18 +184,17 @@ public class HybridBacktestEngine {
                         double atr  = sr.atr14;
                         if (atr <= 0) atr = fill * 0.01; // ATR 없으면 1% 폴백
 
-                        double stopLoss   = fill - SL_ATR_MULT * atr;
-                        double takeProfit = fill + TP_ATR_MULT * atr;
-                        // 안전 한도: 손절 최소 2%, 최대 10%
-                        double stopPct = (fill - stopLoss) / fill;
+                        double stopDist = slAtrMult * atr;
+                        double stopLoss = fill - stopDist;
+                        double stopPct  = fill > 0 ? stopDist / fill : 0;
                         if (stopPct < 0.02 || stopPct > 0.10) {
                             stopLoss = fill * 0.95;
+                            stopDist = fill - stopLoss;
                         }
+                        double takeProfit = tpAtrR > 0 ? fill + tpAtrR * stopDist : 0;
 
-                        // 리스크 기반 사이징: equity 1% 리스크
-                        double riskKrw    = equity * 0.01;
-                        double stopDist   = fill - stopLoss;
-                        double quantity   = stopDist > 0 ? riskKrw / stopDist : 0;
+                        double riskKrw  = equity * 0.01;
+                        double quantity = stopDist > 0 ? riskKrw / stopDist : 0;
 
                         if (quantity > 0) {
                             pos = new OpenPosition(signalId, nextBar.getTimestamp(),
@@ -274,7 +296,8 @@ public class HybridBacktestEngine {
                         ema12, ema26, sma50,
                         macd.getMacd(), macd.getSignalLine(), macd.getHistogram(),
                         rsi14, volumeRatio, atr14,
-                        regime, trend, momentum, rsiSig, volumeSig, candleSig, tradeSignal)
+                        regime, trend, momentum, rsiSig, volumeSig, candleSig, tradeSignal,
+                        STRATEGY_ID, STRATEGY_TYPE)
                 : null;
 
         // 레짐 필터 (RANGING)
@@ -308,12 +331,16 @@ public class HybridBacktestEngine {
     private double closeAndLog(OpenPosition pos, double exitPrice, Candle exitBar, String reason,
                                 @Nullable Account account, String symbol,
                                 double equity, List<BacktestTrade> trades) {
-        double pnl = (exitPrice - pos.entryPrice) * pos.quantity;
+        // 수수료·슬리피지: 진입 시 불리하게, 청산 시 불리하게 적용
+        double costPerSide = feeRate + slippageRate;
+        double effectiveEntry = pos.entryPrice * (1.0 + costPerSide);
+        double effectiveExit  = exitPrice      * (1.0 - costPerSide);
+        double pnl = (effectiveExit - effectiveEntry) * pos.quantity;
         double r   = (pos.entryPrice - pos.initialStop) > 0
                 ? (exitPrice - pos.entryPrice) / (pos.entryPrice - pos.initialStop) : 0;
 
         trades.add(new BacktestTrade(
-                symbol, "HybridSignal", pos.entryTime, pos.entryPrice, pos.quantity,
+                symbol, STRATEGY_ID, pos.entryTime, pos.entryPrice, pos.quantity,
                 pos.initialStop, exitBar.getTimestamp(), exitPrice, reason, pnl, r));
 
         // trade_history 저장 (signal_id로 strategy_run_logs와 연결)
@@ -323,9 +350,13 @@ public class HybridBacktestEngine {
             BigDecimal exitBD  = BigDecimal.valueOf(exitPrice).setScale(2, RoundingMode.HALF_UP);
             BigDecimal qtyBD   = BigDecimal.valueOf(pos.quantity).setScale(8, RoundingMode.HALF_UP);
 
+            // 수수료·슬리피지 반영한 실질 손익 (ML 라벨 현실성)
             BigDecimal entryAmt  = entryBD.multiply(qtyBD).setScale(2, RoundingMode.HALF_UP);
             BigDecimal exitAmt   = exitBD.multiply(qtyBD).setScale(2, RoundingMode.HALF_UP);
-            BigDecimal profitAmt = exitAmt.subtract(entryAmt);
+            BigDecimal feeSlip   = BigDecimal.valueOf(costPerSide * 2);
+            BigDecimal profitAmt = exitAmt.subtract(entryAmt)
+                    .subtract(entryAmt.add(exitAmt).multiply(feeSlip)
+                            .divide(BigDecimal.valueOf(2), 2, RoundingMode.HALF_UP));
             BigDecimal profitRate = entryAmt.compareTo(BigDecimal.ZERO) > 0
                     ? profitAmt.divide(entryAmt, 6, RoundingMode.HALF_UP)
                             .multiply(BigDecimal.valueOf(100)).setScale(4, RoundingMode.HALF_UP)

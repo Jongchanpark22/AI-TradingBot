@@ -9,5 +9,7 @@ public enum StrategyType {
     TREND_FOLLOWING,
     MEAN_REVERSION,
     BREAKOUT,
-    SCALPING
+    SCALPING,
+    /** HybridSignalAnalyzer가 여러 신호를 종합한 복합 전략 */
+    COMPOSITE
 }

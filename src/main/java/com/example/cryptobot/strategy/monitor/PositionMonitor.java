@@ -83,7 +83,8 @@ public class PositionMonitor {
             AccountService accountService,
             TradeHistoryService tradeHistoryService,
             UpbitMarketService upbitMarketService,
-            CandleRepository candleRepository) {
+            CandleRepository candleRepository,
+            RiskManager riskManager) {
         this.positionRepository = positionRepository;
         this.orderRepository = orderRepository;
         this.webSocketClient = webSocketClient;
@@ -93,9 +94,7 @@ public class PositionMonitor {
         this.tradeHistoryService = tradeHistoryService;
         this.upbitMarketService = upbitMarketService;
         this.candleRepository = candleRepository;
-        this.riskManager = new RiskManager(new RiskParameters(
-                0.01, 1.5, 2.0, 2.0, 3.0, 0.05, 3));
-        // partialExitRMultiple=2.0 → ATR 1.5배 손절 기준 +2R에서 부분청산 후 break-even 이동
+        this.riskManager = riskManager;
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -174,10 +173,12 @@ public class PositionMonitor {
                 double atr = fetchCurrentAtr(symbol);
                 double stopLoss, takeProfit;
                 if (atr > 0) {
-                    double atrStop = entry - 2.5 * atr;  // 2.0→2.5: executeBuySignal과 일관성
-                    // 안전 한도: ATR stop이 -10% 초과 내려가면 고정 5% 사용
+                    double stopMult = riskManager.params().stopAtrMultiplier();
+                    double tpMult   = riskManager.params().takeProfitRMultiple();
+                    double stopDist = stopMult * atr;
+                    double atrStop  = entry - stopDist;
                     stopLoss   = atrStop > entry * 0.90 ? atrStop : entry * (1.0 - DEFAULT_STOP_LOSS_RATE);
-                    takeProfit = entry + 5.0 * atr;  // 4.0→5.0: 2:1 손익비 유지
+                    takeProfit = tpMult > 0 ? entry + tpMult * stopDist : entry * (1.0 + DEFAULT_TAKE_PROFIT_RATE);
                 } else {
                     stopLoss   = entry * (1.0 - DEFAULT_STOP_LOSS_RATE);
                     takeProfit = entry * (1.0 + DEFAULT_TAKE_PROFIT_RATE);
@@ -293,7 +294,8 @@ public class PositionMonitor {
                 currentPrice,
                 mp.highestSeen,
                 mp.atr,
-                mp.partialDone
+                mp.partialDone,
+                mp.secondPartialDone
         );
 
         if (decision.shouldExitNow()) {
@@ -302,6 +304,11 @@ public class PositionMonitor {
             handlePartialExit(mp, price, decision.reason());
             mp.currentStop = decision.newStopLoss();
             mp.partialDone = true;
+            persistPositionState(mp);
+        } else if (decision.shouldSecondPartialExit()) {
+            handleSecondPartialExit(mp, price, decision.reason());
+            mp.currentStop = decision.newStopLoss();
+            mp.secondPartialDone = true;
             persistPositionState(mp);
         } else if (decision.newStopLoss() > mp.currentStop) {
             mp.currentStop = decision.newStopLoss();
@@ -355,8 +362,10 @@ public class PositionMonitor {
     }
 
     private void handlePartialExit(MonitoredPosition mp, BigDecimal price, String reason) {
-        BigDecimal halfQty = mp.quantity.divide(BigDecimal.valueOf(2), 8, RoundingMode.DOWN);
-        log.info("📊 [{}] PARTIAL EXIT @ {} — {} — selling {}",
+        // 1차 부분청산: 설정값(partialExitRatio)으로 청산 수량 계산 (기본 0.5 = 원포지션 50%)
+        BigDecimal ratio = BigDecimal.valueOf(riskManager.params().partialExitRatio());
+        BigDecimal halfQty = mp.quantity.multiply(ratio).setScale(8, RoundingMode.DOWN);
+        log.info("📊 [{}] 1차 부분청산(+1R) @ {} — {} — selling {}",
                 mp.symbol, price, reason, halfQty);
         try {
             UpbitOrderDto result = orderService.placeSellMarketOrder(mp.symbol, halfQty);
@@ -364,12 +373,33 @@ public class PositionMonitor {
                 saveOrderRecord(mp, halfQty, price, result, "PartialExit:+1R");
                 saveTradeHistory(mp, price, halfQty, reason, true);
             } else {
-                log.error("[PositionMonitor] 부분 청산 주문 제출 실패: {}", mp.symbol);
+                log.error("[PositionMonitor] 1차 부분청산 주문 제출 실패: {}", mp.symbol);
             }
             mp.quantity = mp.quantity.subtract(halfQty);
             updatePositionPartialExit(mp);
         } catch (Exception e) {
             log.error("Failed to execute partial exit for {}", mp.symbol, e);
+        }
+    }
+
+    private void handleSecondPartialExit(MonitoredPosition mp, BigDecimal price, String reason) {
+        // 2차 부분청산: 현재 남은 수량의 partial2Ratio(50%) 청산 = 원포지션의 25%
+        BigDecimal ratio = BigDecimal.valueOf(riskManager.params().partial2Ratio());
+        BigDecimal sellQty = mp.quantity.multiply(ratio).setScale(8, RoundingMode.DOWN);
+        log.info("📊 [{}] 2차 부분청산(+2R) @ {} — {} — selling {}",
+                mp.symbol, price, reason, sellQty);
+        try {
+            UpbitOrderDto result = orderService.placeSellMarketOrder(mp.symbol, sellQty);
+            if (result != null) {
+                saveOrderRecord(mp, sellQty, price, result, "PartialExit:+2R");
+                saveTradeHistory(mp, price, sellQty, reason, true);
+            } else {
+                log.error("[PositionMonitor] 2차 부분청산 주문 제출 실패: {}", mp.symbol);
+            }
+            mp.quantity = mp.quantity.subtract(sellQty);
+            updatePositionPartialExit(mp);
+        } catch (Exception e) {
+            log.error("Failed to execute second partial exit for {}", mp.symbol, e);
         }
     }
 
@@ -555,6 +585,8 @@ public class PositionMonitor {
         volatile double currentStop;
         volatile double highestSeen;
         volatile boolean partialDone;
+        /** +2R 2차 부분청산 완료 여부 — DB 컬럼 없이 infer로 재시작 시 복원 */
+        volatile boolean secondPartialDone;
         volatile BigDecimal quantity;
         /** true: 목표 수익(7%) 달성 후 추세 추적 모드 — 최고점 대비 3% 하락 시 매도 */
         volatile boolean aboveProfitTarget;
@@ -562,6 +594,7 @@ public class PositionMonitor {
         MonitoredPosition(Long positionId, String symbol, double entryPrice,
                           double initialStop, double currentStop, double takeProfit,
                           double highestSeen, double atr, boolean partialDone,
+                          boolean secondPartialDone,
                           BigDecimal quantity, boolean aboveProfitTarget, String signalId) {
             this.positionId = positionId;
             this.symbol = symbol;
@@ -572,6 +605,7 @@ public class PositionMonitor {
             this.highestSeen = highestSeen;
             this.atr = atr;
             this.partialDone = partialDone;
+            this.secondPartialDone = secondPartialDone;
             this.quantity = quantity;
             this.aboveProfitTarget = aboveProfitTarget;
             this.signalId = signalId;
@@ -588,9 +622,12 @@ public class PositionMonitor {
             BigDecimal qty = p.getQuantity() != null ? p.getQuantity() : BigDecimal.ZERO;
             // 재시작 시에도 최고점이 이미 7% 이상이었다면 추세 추적 모드로 복원
             boolean aboveTarget = entry > 0 && highest >= entry * (1.0 + PROFIT_TARGET_RATE);
+            // 2차 부분청산 상태는 DB 컬럼 없이 추론: 1차 완료 + 최고가 ≥ +2R 기본값(2.0×initRisk)
+            double initRisk = initStop > 0 ? entry - initStop : 0;
+            boolean secondPartial = partial && initRisk > 0 && highest >= entry + 2.0 * initRisk;
 
             return new MonitoredPosition(p.getId(), p.getSymbol(), entry,
-                    initStop, curStop, tp, highest, atr, partial, qty, aboveTarget, p.getSignalId());
+                    initStop, curStop, tp, highest, atr, partial, secondPartial, qty, aboveTarget, p.getSignalId());
         }
     }
 }

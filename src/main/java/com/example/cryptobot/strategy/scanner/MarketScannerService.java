@@ -180,6 +180,30 @@ public class MarketScannerService {
         return volumeScore + breakoutReadinessScore + momentumScore;
     }
 
+    /**
+     * 거래대금 기준으로만 상위 코인 선별 (백테스트용).
+     * 당일 변동률 필터를 제외하여 시장 상황에 무관하게 일관된 심볼 집합 반환.
+     */
+    public List<String> scanTopByVolumeOnly() {
+        List<String> allMarkets = upbitApiClient.getAllKrwMarkets();
+        if (allMarkets.isEmpty()) {
+            log.warn("[Scanner] KRW 마켓 목록 조회 실패");
+            return List.of();
+        }
+        List<UpbitTickerDto> tickers = fetchAllTickers(allMarkets);
+        List<String> result = tickers.stream()
+                .filter(t -> t.getAccTradePrice24h() != null
+                        && t.getAccTradePrice24h().compareTo(BigDecimal.valueOf(minTradePrice24h)) >= 0
+                        && !Boolean.TRUE.equals(t.getIsTradingSuspended()))
+                .sorted(Comparator.comparingDouble(
+                        (UpbitTickerDto t) -> t.getAccTradePrice24h().doubleValue()).reversed())
+                .limit(maxCoins)
+                .map(UpbitTickerDto::getMarket)
+                .toList();
+        log.info("[Scanner] 거래대금 상위 선별(백테스트용) {}개", result.size());
+        return result;
+    }
+
     // ---- 유틸 ----
 
     private List<UpbitTickerDto> fetchAllTickers(List<String> markets) {

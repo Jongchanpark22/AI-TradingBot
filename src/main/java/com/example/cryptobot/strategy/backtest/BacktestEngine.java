@@ -92,7 +92,7 @@ public final class BacktestEngine {
                 } else {
                     TrailingDecision d = risk.updateTrailing(
                             pos.entryPrice, pos.initialStop, pos.currentStop,
-                            close, pos.highestSeen, atr, pos.partialDone);
+                            close, pos.highestSeen, atr, pos.partialDone, false);
 
                     if (d.shouldExitNow()) {
                         equity = closePosition(pos, close, bar, d.reason(),

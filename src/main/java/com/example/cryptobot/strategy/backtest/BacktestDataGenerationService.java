@@ -7,6 +7,7 @@ import com.example.cryptobot.strategy.core.StrategyRunLogRepository;
 import com.example.cryptobot.exchange.upbit.dto.UpbitCandleDto;
 import com.example.cryptobot.market.candle.Candle;
 import com.example.cryptobot.market.candle.CandleRepository;
+import com.example.cryptobot.trade.TradeHistoryRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -44,8 +45,10 @@ public class BacktestDataGenerationService {
     private final UpbitApiClient upbitApiClient;
     private final CandleRepository candleRepository;
     private final HybridBacktestEngine hybridBacktestEngine;
+    private final MultiStrategyBacktestEngine multiStrategyBacktestEngine;
     private final AccountRepository accountRepository;
     private final StrategyRunLogRepository strategyRunLogRepository;
+    private final TradeHistoryRepository tradeHistoryRepository;
 
     private static final int CANDLE_UNIT   = 15;
     private static final String TIMEFRAME  = "15분";
@@ -61,34 +64,61 @@ public class BacktestDataGenerationService {
      * @param monthsBack 과거 몇 개월치 데이터 수집 (예: 24)
      */
     public GenerationResult generate(List<String> symbols, int monthsBack) {
-        // 백테스트 전용 계정 확보 (없으면 자동 생성)
         Account account = getOrCreateBacktestAccount();
+        clearBacktestData();
 
-        // 기존 BACKTEST 신호 로그 삭제 (재실행 시 중복 방지)
-        int deleted = strategyRunLogRepository.deleteBySource("BACKTEST");
-        if (deleted > 0) {
-            log.info("[BacktestGen] 기존 BACKTEST 로그 {}개 삭제 (재실행)", deleted);
-        }
+        return runGeneration(symbols, monthsBack, account, false);
+    }
+
+    /**
+     * 독립 실행 모드: 6개 전략(5개 룰기반 + HYBRID)이 레짐 게이팅 없이 독립 포지션으로 실행.
+     * ML 메타라벨링 학습 데이터 생성 전용.
+     */
+    public GenerationResult generateIndependent(List<String> symbols, int monthsBack) {
+        Account account = getOrCreateBacktestAccount();
+        clearBacktestData();
+
+        return runGeneration(symbols, monthsBack, account, true);
+    }
+
+    private GenerationResult runGeneration(List<String> symbols, int monthsBack,
+                                            Account account, boolean independentMode) {
 
         LocalDateTime since = LocalDateTime.now(ZoneOffset.UTC).minusMonths(monthsBack);
         int totalTrades = 0;
         int failedSymbols = 0;
 
+        // BTC 시장 맥락·MTF 계산용 캔들 사전 로드 (심볼 루프 밖에서 1회)
+        List<Candle> btcCandles = List.of();
+        try {
+            btcCandles = fetchOrLoadCandles("KRW-BTC", since);
+            log.info("[BacktestGen] BTC 캔들 {}개 로드 완료 (시장 맥락·MTF용)", btcCandles.size());
+        } catch (Exception e) {
+            log.warn("[BacktestGen] BTC 캔들 로드 실패 — 시장 맥락 필터 스킵: {}", e.getMessage());
+        }
+
         for (String symbol : symbols) {
             try {
                 List<Candle> candles = fetchOrLoadCandles(symbol, since);
-                if (candles.size() < 60) {
-                    log.warn("[BacktestGen] 캔들 부족: {} — {}개 (최소 60 필요)", symbol, candles.size());
+                if (candles.size() < 80) {
+                    log.warn("[BacktestGen] 캔들 부족: {} — {}개 (최소 80 필요)", symbol, candles.size());
                     continue;
                 }
-                log.info("[BacktestGen] {} — {}개 캔들, 백테스트 시작", symbol, candles.size());
+                log.info("[BacktestGen] {} — {}개 캔들, {} 모드 백테스트 시작",
+                        symbol, candles.size(), independentMode ? "독립" : "HYBRID");
 
-                BacktestResult result = hybridBacktestEngine.run(symbol, candles, TIMEFRAME, account);
+                // BTC 자체 백테스트 시에는 BTC 캔들을 시장 맥락으로 쓰지 않음 (look-ahead 편향 방지)
+                List<Candle> symbolBtc = "KRW-BTC".equals(symbol) ? List.of() : btcCandles;
+
+                BacktestResult result = independentMode
+                        ? multiStrategyBacktestEngine.run(symbol, candles, symbolBtc, TIMEFRAME, account)
+                        : hybridBacktestEngine.run(symbol, candles, symbolBtc, TIMEFRAME, account);
                 totalTrades += result.totalTrades();
 
-                log.info("[BacktestGen] {} 완료 — 거래 {}건, 승률 {:.1f}%, 수익률 {:.2f}%",
+                log.info("[BacktestGen] {} 완료 — 거래 {}건, 승률 {}%, 수익률 {}%",
                         symbol, result.totalTrades(),
-                        result.winRate() * 100, result.totalReturn() * 100);
+                        String.format("%.1f", result.winRate() * 100),
+                        String.format("%.2f", result.totalReturn() * 100));
             } catch (Exception e) {
                 log.error("[BacktestGen] {} 처리 실패", symbol, e);
                 failedSymbols++;
@@ -98,6 +128,17 @@ public class BacktestDataGenerationService {
         log.info("[BacktestGen] 전체 완료 — 심볼 {}개, 거래 {}건, 실패 {}개",
                 symbols.size(), totalTrades, failedSymbols);
         return new GenerationResult(symbols.size() - failedSymbols, totalTrades, failedSymbols);
+    }
+
+    /**
+     * source='BACKTEST' 데이터만 삭제. LIVE/PAPER 데이터는 건드리지 않는다.
+     */
+    @Transactional
+    public void clearBacktestData() {
+        int logDeleted   = strategyRunLogRepository.deleteBySource("BACKTEST");
+        int tradeDeleted = tradeHistoryRepository.deleteBySource("BACKTEST");
+        log.info("[BacktestGen] BACKTEST 데이터 초기화 — 신호로그 {}개, 거래이력 {}개 삭제",
+                logDeleted, tradeDeleted);
     }
 
     /**

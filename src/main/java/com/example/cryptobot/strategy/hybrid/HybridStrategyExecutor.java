@@ -33,6 +33,8 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -66,12 +68,12 @@ public class HybridStrategyExecutor {
     @Value("${trading.risk.max-daily-loss:10.0}")
     private BigDecimal maxDailyLoss;
 
-    /** 기본 투자 비율 — 총 자산의 25% */
-    @Value("${trading.risk.risk-per-trade:0.25}")
+    /** 기본 투자 비율 — 총 자산의 10% */
+    @Value("${trading.risk.risk-per-trade:0.10}")
     private BigDecimal riskPerTrade;
 
-    /** 최대 투자 비율 — 총 자산의 30% (STRONG_BUY 시) */
-    @Value("${trading.risk.max-order-percent:0.30}")
+    /** 최대 투자 비율 — 총 자산의 15% (STRONG_BUY 시) */
+    @Value("${trading.risk.max-order-percent:0.15}")
     private BigDecimal maxOrderPercent;
 
     /** 최소 주문 금액 (KRW) */
@@ -80,6 +82,23 @@ public class HybridStrategyExecutor {
 
     @Value("${trading.risk.max-open-positions:3}")
     private int maxOpenPositions;
+
+    // ATR 기반 손절·익절 배수 (백테스트·라이브 공통)
+    @Value("${trading.risk.stop-atr-mult:3.0}")
+    private double stopAtrMult;
+
+    @Value("${trading.risk.take-profit-r:3.0}")
+    private double takeProfitR;
+
+    // 시장 맥락 필터 설정
+    @Value("${trading.market-filter.enabled:true}")
+    private boolean marketFilterEnabled;
+
+    @Value("${trading.market-filter.block-when-market-downtrend:true}")
+    private boolean blockWhenMarketDowntrend;
+
+    @Value("${trading.market-filter.market-symbol:KRW-BTC}")
+    private String marketSymbol;
 
     private final HybridSignalAnalyzer signalAnalyzer = new HybridSignalAnalyzer();
     private final TradeExecutionEngine executionEngine = new TradeExecutionEngine();
@@ -120,13 +139,70 @@ public class HybridStrategyExecutor {
             return;
         }
 
-        // 3. 각 코인 분석 및 매매 실행
+        // 3. BTC 시장 맥락 사전 계산 (심볼 루프 밖, DB 호출 1회)
+        String[] btcCtx = fetchBtcMarketContext(candleUnit);
+        String btcRegime = btcCtx[0];
+        String btcTrendStr = btcCtx[1];
+        String btcReturnStr = btcCtx[2];
+        String btcAboveMAStr = btcCtx[3];
+
+        if (marketFilterEnabled && blockWhenMarketDowntrend && "TRENDING_DOWN".equals(btcRegime)) {
+            log.info("[{}] BTC 하락장({}) — 전체 롱 진입 차단", periodName, btcRegime);
+            return;
+        }
+
+        // 4. 각 코인 분석 및 매매 실행
         for (String symbol : symbols) {
             try {
-                executeStrategyForSymbol(account, symbol, period, candleUnit, periodName);
+                executeStrategyForSymbol(account, symbol, period, candleUnit, periodName,
+                        btcRegime, btcTrendStr, btcReturnStr, btcAboveMAStr);
             } catch (Exception e) {
                 log.error("[{}] 전략 실행 실패: {}", periodName, symbol, e);
             }
+        }
+    }
+
+    /**
+     * BTC(또는 market-symbol) 15분봉을 조회하여 시장 맥락 문자열 배열을 반환한다.
+     * 반환: [regime, trend(1/0), return(%), aboveMA(1/0)]
+     */
+    private String[] fetchBtcMarketContext(int candleUnit) {
+        try {
+            upbitMarketService.getAndSaveCandles(marketSymbol, candleUnit, 50);
+            List<Candle> btcCandles = candleRepository
+                    .findTopNBySymbolAndPeriodOrderByTimestampDesc(
+                            marketSymbol, Candle.CandlePeriod.FIFTEEN_MIN.name(), 50);
+            if (btcCandles == null || btcCandles.size() < 26) {
+                return new String[]{"UNKNOWN", "0", "0.0", "0"};
+            }
+            btcCandles.sort((a, b) -> a.getTimestamp().compareTo(b.getTimestamp()));
+
+            List<Double> closes = btcCandles.stream()
+                    .map(c -> c.getClosePrice() != null ? c.getClosePrice().doubleValue() : 0.0)
+                    .toList();
+
+            double ema12 = TechnicalIndicatorCalculator.calculateEMA(closes, 12);
+            double ema26 = TechnicalIndicatorCalculator.calculateEMA(closes, 26);
+            int mktTrend = ema12 > ema26 ? 1 : 0;
+
+            MarketRegime regime = regimeClassifier.classify(btcCandles);
+
+            double mktReturn = 0.0;
+            if (closes.size() >= 21) {
+                double recent = closes.get(closes.size() - 1);
+                double past   = closes.get(closes.size() - 21);
+                mktReturn = past > 0 ? (recent - past) / past * 100.0 : 0.0;
+            }
+
+            double sma50 = closes.size() >= 50
+                    ? TechnicalIndicatorCalculator.calculateSMA(closes, 50) : 0.0;
+            int mktAboveMA = sma50 > 0 && closes.get(closes.size() - 1) > sma50 ? 1 : 0;
+
+            return new String[]{regime.name(), String.valueOf(mktTrend),
+                    String.valueOf(mktReturn), String.valueOf(mktAboveMA)};
+        } catch (Exception e) {
+            log.warn("[BTC컨텍스트] 조회 실패 — UNKNOWN 사용: {}", e.getMessage());
+            return new String[]{"UNKNOWN", "0", "0.0", "0"};
         }
     }
 
@@ -135,7 +211,11 @@ public class HybridStrategyExecutor {
             String symbol,
             Candle.CandlePeriod period,
             int candleUnit,
-            String periodName) {
+            String periodName,
+            String btcRegime,
+            String btcTrendStr,
+            String btcReturnStr,
+            String btcAboveMAStr) {
 
         // Phase 0: 이 심볼 평가 전체를 추적하는 신호 ID — 조기 종료 포함 모든 경로에서 사용
         String signalId = UUID.randomUUID().toString();
@@ -146,12 +226,13 @@ public class HybridStrategyExecutor {
         upbitMarketService.getAndSaveCandles(symbol, candleUnit, 50);
         upbitMarketService.getAndSaveTicker(symbol);
 
-        List<Candle> candles = candleRepository
-                .findTopNBySymbolAndPeriodOrderByTimestampDesc(symbol, period.name(), 50);
+        // MTF 집계용으로 DB에서 더 많은 캔들 로드 (1h EMA26 = 완성된 26시간 = ~104봉)
+        List<Candle> allCandles = candleRepository
+                .findTopNBySymbolAndPeriodOrderByTimestampDesc(symbol, period.name(), 150);
 
-        if (candles == null || candles.size() < 50) {
+        if (allCandles == null || allCandles.size() < 50) {
             log.warn("[{}] 캔들 데이터 부족: {}, 개수: {}",
-                    periodName, symbol, candles != null ? candles.size() : 0);
+                    periodName, symbol, allCandles != null ? allCandles.size() : 0);
             strategyRunLogService.save(signalId, null, null,
                     symbol, periodName, null, null, null, null, null,
                     null, null, null, null, null,
@@ -159,7 +240,12 @@ public class HybridStrategyExecutor {
             return;
         }
 
-        candles.sort((c1, c2) -> c1.getTimestamp().compareTo(c2.getTimestamp()));
+        allCandles.sort((c1, c2) -> c1.getTimestamp().compareTo(c2.getTimestamp()));
+
+        // 신호 분석에는 최신 50봉만 사용 (MTF 집계는 allCandles 전체 사용)
+        List<Candle> candles = allCandles.size() > 50
+                ? allCandles.subList(allCandles.size() - 50, allCandles.size())
+                : allCandles;
 
         List<Double> closePrices = candles.stream()
                 .map(c -> c.getClosePrice() != null ? c.getClosePrice().doubleValue() : 0.0)
@@ -251,7 +337,12 @@ public class HybridStrategyExecutor {
                 ema12, ema26, sma50,
                 macdValues.getMacd(), macdValues.getSignalLine(), macdValues.getHistogram(),
                 rsi, volumeRatio, atrValue,
-                regime, trend, momentum, rsiSignal, volumeSignal, candleSignal, tradeSignal);
+                regime, trend, momentum, rsiSignal, volumeSignal, candleSignal, tradeSignal,
+                "HYBRID", "COMPOSITE",
+                btcRegime,
+                Integer.parseInt(btcTrendStr),
+                Double.parseDouble(btcReturnStr),
+                Integer.parseInt(btcAboveMAStr));
         aiDecision = aiSignalGate.evaluate(ruleSaysBuy, snap);
         // ---- end [Phase 0] ----
 
@@ -279,10 +370,10 @@ public class HybridStrategyExecutor {
                     .build();
         }
 
-        // ---- 1시간봉 상승추세 필터: 단기 BUY라도 1시간봉 하락추세면 차단 ----
+        // ---- 1시간봉 상승추세 필터: 15분봉 집계로 1시간봉 EMA 계산 (train-serve 일관성) ----
         if ((filteredSignal.getSignal() == HybridSignalAnalyzer.SignalType.BUY
                 || filteredSignal.getSignal() == HybridSignalAnalyzer.SignalType.STRONG_BUY)
-                && !isHourlyTrendBullish(symbol)) {
+                && !isHourlyTrendBullish(allCandles)) {
             filteredSignal = HybridSignalAnalyzer.TradeSignal.builder()
                     .signal(HybridSignalAnalyzer.SignalType.NO_SIGNAL)
                     .confidence(0)
@@ -290,10 +381,10 @@ public class HybridStrategyExecutor {
                     .build();
         }
 
-        // ---- 4시간봉 상승추세 필터: 1시간봉 통과라도 4시간봉 하락추세면 추가 차단 ----
+        // ---- 4시간봉 상승추세 필터: 15분봉 집계로 4시간봉 EMA 계산 (train-serve 일관성) ----
         if ((filteredSignal.getSignal() == HybridSignalAnalyzer.SignalType.BUY
                 || filteredSignal.getSignal() == HybridSignalAnalyzer.SignalType.STRONG_BUY)
-                && !isFourHourTrendBullish(symbol)) {
+                && !isFourHourTrendBullish(allCandles)) {
             filteredSignal = HybridSignalAnalyzer.TradeSignal.builder()
                     .signal(HybridSignalAnalyzer.SignalType.NO_SIGNAL)
                     .confidence(0)
@@ -434,12 +525,12 @@ public class HybridStrategyExecutor {
             // ATR 없으면 고정 비율 폴백
             double stopLoss, takeProfit;
             if (atrValue > 0) {
-                stopLoss   = price - (2.5 * atrValue);  // 2.0→2.5: 평균 -1.15% 손절로 15분봉 노이즈 미달
-                takeProfit = price + (5.0 * atrValue);  // 2:1 손익비 유지
+                double stopDist = stopAtrMult * atrValue;
+                stopLoss   = price - stopDist;
+                takeProfit = takeProfitR > 0 ? price + takeProfitR * stopDist : price * (1.0 + takeProfitPercent.doubleValue() / 100.0);
                 // 안전 한도: 손절 최대 10%, 최소 2.0%
                 double stopPct = (price - stopLoss) / price;
-                if (stopPct > 0.10) stopLoss = price * (1.0 - stopLossPercent.doubleValue() / 100.0);
-                if (stopPct < 0.02) stopLoss = price * (1.0 - stopLossPercent.doubleValue() / 100.0);
+                if (stopPct > 0.10 || stopPct < 0.02) stopLoss = price * (1.0 - stopLossPercent.doubleValue() / 100.0);
             } else {
                 stopLoss   = price * (1.0 - stopLossPercent.doubleValue() / 100.0);
                 takeProfit = price * (1.0 + takeProfitPercent.doubleValue() / 100.0);
@@ -534,38 +625,21 @@ public class HybridStrategyExecutor {
     // ---- 1시간봉 추세 확인 ----
 
     /**
-     * 1시간봉 EMA12 > EMA26 이면 상승추세로 판단 (멀티타임프레임 필터).
-     * 데이터 부족 시 true를 반환하여 매수를 허용한다.
+     * 15분봉 집계로 1시간봉 EMA12 > EMA26 여부 판단 (train-serve 일관성).
+     * 완성된 1시간봉 26개 미만이면 true를 반환하여 매수를 허용한다.
      */
-    private boolean isHourlyTrendBullish(String symbol) {
-        List<Candle> hourlyCandles = candleRepository
-                .findTopNBySymbolAndPeriodOrderByTimestampDesc(symbol, Candle.CandlePeriod.ONE_HOUR.name(), 26);
-
-        if (hourlyCandles == null || hourlyCandles.size() < 26) {
-            upbitMarketService.getAndSaveCandles(symbol, 60, 26);
-            hourlyCandles = candleRepository
-                    .findTopNBySymbolAndPeriodOrderByTimestampDesc(symbol, Candle.CandlePeriod.ONE_HOUR.name(), 26);
-        }
-
-        if (hourlyCandles == null || hourlyCandles.size() < 26) {
-            log.debug("[{}] 1시간봉 데이터 부족 — 필터 스킵 (매수 허용)", symbol);
+    private boolean isHourlyTrendBullish(List<Candle> fifteenMinCandles) {
+        List<double[]> h1Agg = aggregateToHigherTf(fifteenMinCandles, 60);
+        if (h1Agg.size() < 26) {
+            log.debug("1시간봉(15m집계) 데이터 부족({}) — 필터 스킵", h1Agg.size());
             return true;
         }
-
-        hourlyCandles.sort((a, b) -> a.getTimestamp().compareTo(b.getTimestamp()));
-
-        List<Double> hourlyCloses = hourlyCandles.stream()
-                .map(c -> c.getClosePrice() != null ? c.getClosePrice().doubleValue() : 0.0)
-                .toList();
-
-        double ema12h = TechnicalIndicatorCalculator.calculateEMA(hourlyCloses, 12);
-        double ema26h = TechnicalIndicatorCalculator.calculateEMA(hourlyCloses, 26);
-
+        List<Double> closes = h1Agg.stream().map(b -> b[0]).toList();
+        double ema12h = TechnicalIndicatorCalculator.calculateEMA(closes, 12);
+        double ema26h = TechnicalIndicatorCalculator.calculateEMA(closes, 26);
         boolean bullish = ema12h > ema26h;
-        log.debug("[{}] 1시간봉 EMA12={}, EMA26={} → {}",
-                symbol,
-                String.format("%.4f", ema12h),
-                String.format("%.4f", ema26h),
+        log.debug("1시간봉(15m집계) EMA12={}, EMA26={} → {}",
+                String.format("%.4f", ema12h), String.format("%.4f", ema26h),
                 bullish ? "상승추세" : "하락추세");
         return bullish;
     }
@@ -573,40 +647,51 @@ public class HybridStrategyExecutor {
     // ---- 4시간봉 추세 확인 ----
 
     /**
-     * 4시간봉 EMA12 > EMA26 이면 상승추세로 판단 (고차 타임프레임 필터).
-     * 데이터 부족 시 true를 반환하여 매수를 허용한다.
+     * 15분봉 집계로 4시간봉 EMA12 > EMA26 여부 판단 (train-serve 일관성).
+     * 완성된 4시간봉 26개 미만이면 true를 반환하여 매수를 허용한다.
      */
-    private boolean isFourHourTrendBullish(String symbol) {
-        List<Candle> h4Candles = candleRepository
-                .findTopNBySymbolAndPeriodOrderByTimestampDesc(symbol, Candle.CandlePeriod.FOUR_HOUR.name(), 26);
-
-        if (h4Candles == null || h4Candles.size() < 26) {
-            upbitMarketService.getAndSaveCandles(symbol, 240, 26);
-            h4Candles = candleRepository
-                    .findTopNBySymbolAndPeriodOrderByTimestampDesc(symbol, Candle.CandlePeriod.FOUR_HOUR.name(), 26);
-        }
-
-        if (h4Candles == null || h4Candles.size() < 26) {
-            log.debug("[{}] 4시간봉 데이터 부족 — 필터 스킵 (매수 허용)", symbol);
+    private boolean isFourHourTrendBullish(List<Candle> fifteenMinCandles) {
+        List<double[]> h4Agg = aggregateToHigherTf(fifteenMinCandles, 240);
+        if (h4Agg.size() < 26) {
+            log.debug("4시간봉(15m집계) 데이터 부족({}) — 필터 스킵", h4Agg.size());
             return true;
         }
-
-        h4Candles.sort((a, b) -> a.getTimestamp().compareTo(b.getTimestamp()));
-
-        List<Double> h4Closes = h4Candles.stream()
-                .map(c -> c.getClosePrice() != null ? c.getClosePrice().doubleValue() : 0.0)
-                .toList();
-
-        double ema12h4 = TechnicalIndicatorCalculator.calculateEMA(h4Closes, 12);
-        double ema26h4 = TechnicalIndicatorCalculator.calculateEMA(h4Closes, 26);
-
+        List<Double> closes = h4Agg.stream().map(b -> b[0]).toList();
+        double ema12h4 = TechnicalIndicatorCalculator.calculateEMA(closes, 12);
+        double ema26h4 = TechnicalIndicatorCalculator.calculateEMA(closes, 26);
         boolean bullish = ema12h4 > ema26h4;
-        log.debug("[{}] 4시간봉 EMA12={}, EMA26={} → {}",
-                symbol,
-                String.format("%.4f", ema12h4),
-                String.format("%.4f", ema26h4),
+        log.debug("4시간봉(15m집계) EMA12={}, EMA26={} → {}",
+                String.format("%.4f", ema12h4), String.format("%.4f", ema26h4),
                 bullish ? "상승추세" : "하락추세");
         return bullish;
+    }
+
+    /**
+     * 15분봉을 시간 경계 기준으로 상위 타임프레임 봉으로 집계.
+     * 진행 중인 마지막 봉은 포함하지 않아 look-ahead 편향 방지.
+     * 반환: {close, unusedIdx} 배열 — close만 EMA 계산에 사용.
+     */
+    private static List<double[]> aggregateToHigherTf(List<Candle> candles, int periodMinutes) {
+        List<double[]> result = new ArrayList<>();
+        long bucketSec = periodMinutes * 60L;
+        long currentBucket = -1;
+        double currentClose = 0.0;
+
+        for (Candle c : candles) {
+            if (c.getTimestamp() == null) continue;
+            long epochSec = c.getTimestamp().toEpochSecond(ZoneOffset.UTC);
+            long bucket = epochSec / bucketSec;
+
+            if (bucket != currentBucket) {
+                if (currentBucket >= 0) {
+                    result.add(new double[]{currentClose, 0});
+                }
+                currentBucket = bucket;
+            }
+            currentClose = c.getClosePrice() != null ? c.getClosePrice().doubleValue() : currentClose;
+        }
+        // 마지막 진행 중인 봉 미포함 (완성된 봉만 사용)
+        return result;
     }
 
 }

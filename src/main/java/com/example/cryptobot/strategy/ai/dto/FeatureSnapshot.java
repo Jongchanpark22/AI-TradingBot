@@ -82,4 +82,20 @@ public class FeatureSnapshot {
     // ---- 최종 룰 신호 ----
     /** HybridSignalAnalyzer.generateTradeSignal() 결과: STRONG_BUY / BUY / NO_SIGNAL 등 */
     private String ruleSignal;
+
+    // ---- 전략 지문 (Strategy fingerprint) ----
+    /** 이 신호를 발생시킨 전략 ID (예: "HYBRID", "MaPullback(EMA20/SMA50)") */
+    private String strategyId;
+    /** 전략 행동 유형 (예: "COMPOSITE", "TREND_FOLLOWING") */
+    private String strategyType;
+
+    // ---- 시장 맥락 (BTC 기준, 알트 공통 필터) ----
+    /** BTC 레짐 (TRENDING_UP / RANGING / NEUTRAL / TRENDING_DOWN / UNKNOWN) */
+    private String marketRegime;
+    /** BTC EMA12 > EMA26 여부 (1=상승추세, 0=하락추세) */
+    private int marketTrend;
+    /** BTC 최근 20봉 수익률 (%) */
+    private double marketReturn;
+    /** BTC 현재가 > SMA50 여부 (1=위, 0=아래) */
+    private int marketAboveMA;
 }

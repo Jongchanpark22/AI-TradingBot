@@ -1,45 +1,89 @@
-# 로컬 MySQL과 Redis를 이미 설치하여 사용하는 경우
-# 이 파일은 필요 없습니다.
-#
-# 로컬 MySQL/Redis 설정:
-# MySQL: localhost:3306 (user: bot_user, password: password)
-# Redis: localhost:6379
-#
-# MySQL 시작 (Mac):
-#   brew services start mysql-server
-#
-# Redis 시작 (Mac):
-#   brew services start redis
-#
-# 또는 Homebrew로 설치하지 않았다면 직접 설치 후 실행하세요.
+version: '3.8'
 
-# version: '3.8'
+# 배포용 docker-compose.
+# 필요 환경변수: .env 파일 참고 (.env.example 복사 후 작성)
 #
-# services:
-#   mysql:
-#     image: mysql:8.0
-#     container_name: crypto-trading-bot-mysql
-#     environment:
-#       MYSQL_ROOT_PASSWORD: rootpassword
-#       MYSQL_DATABASE: crypto_bot
-#       MYSQL_USER: bot_user
-#       MYSQL_PASSWORD: password
-#       TZ: 'Asia/Seoul'
-#     ports:
-#       - "3306:3306"
-#     volumes:
-#       - mysql_data:/var/lib/mysql
-#
-#   redis:
-#     image: redis:7-alpine
-#     container_name: crypto-trading-bot-redis
-#     ports:
-#       - "6379:6379"
-#     volumes:
-#       - redis_data:/data
-#
-# volumes:
-#   mysql_data:
-#   redis_data:
+# 실행 순서:
+#   1. cp .env.example .env && vi .env   (환경변수 설정)
+#   2. cd ai-service && python train.py  (최초 1회 모델 학습)
+#   3. docker-compose up -d              (전체 서비스 시작)
 
+services:
 
+  # ── MySQL ──────────────────────────────────────────────────────────
+  mysql:
+    image: mysql:8.0
+    container_name: crypto-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      MYSQL_DATABASE: crypto_bot
+      TZ: Asia/Seoul
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${DB_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis ──────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: crypto-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  # ── Python ML 서버 ─────────────────────────────────────────────────
+  ai-service:
+    build:
+      context: ./ai-service
+    container_name: crypto-ai
+    environment:
+      # Docker 내부에서 mysql 컨테이너로 접속
+      DB_URL: mysql+pymysql://root:${DB_PASSWORD}@mysql:3306/crypto_bot
+    volumes:
+      # 모델 파일 영속화 (재빌드 시 재학습 불필요)
+      - ./ai-service/model:/app/model
+    ports:
+      - "8000:8000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ── Spring Boot 트레이딩 봇 ────────────────────────────────────────
+  spring-app:
+    build:
+      context: .
+    container_name: crypto-spring
+    environment:
+      # DB: localhost 대신 mysql 컨테이너명으로 접속
+      LOCAL_DB_URL:      jdbc:mysql://mysql:3306/crypto_bot
+      LOCAL_DB_USERNAME: root
+      LOCAL_DB_PASSWORD: ${DB_PASSWORD}
+      # 업비트 API 키
+      UPBIT_ACCESS_KEY: ${UPBIT_ACCESS_KEY}
+      UPBIT_SECRET_KEY: ${UPBIT_SECRET_KEY}
+      # JWT
+      JWT_SECRET: ${JWT_SECRET}
+      # Python ML 서버 주소 (컨테이너 내부 네트워크)
+      TRADING_AI_BASE_URL: http://ai-service:8000
+    ports:
+      - "8080:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      ai-service:
+        condition: service_healthy
+
+volumes:
+  mysql_data:
+  redis_data:

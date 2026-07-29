@@ -320,7 +320,7 @@ public class TradeExecutionEngine {
         boolean partialDone = Boolean.TRUE.equals(position.getPartialExitDone());
 
         TrailingDecision d = riskManager.updateTrailing(
-                entry, initialStop, stop, currentPrice, highest, atr, partialDone);
+                entry, initialStop, stop, currentPrice, highest, atr, partialDone, false);
 
         // ratchet stop in storage
         if (d.newStopLoss() > stop) {
