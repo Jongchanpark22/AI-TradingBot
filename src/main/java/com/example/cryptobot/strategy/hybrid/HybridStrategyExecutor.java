@@ -100,6 +100,10 @@ public class HybridStrategyExecutor {
     @Value("${trading.market-filter.market-symbol:KRW-BTC}")
     private String marketSymbol;
 
+    /** true: 업비트에 실제 주문 제출 / false(기본): 신호·로그만, 주문 없음 */
+    @Value("${trading.execution.enabled:false}")
+    private boolean executionEnabled;
+
     private final HybridSignalAnalyzer signalAnalyzer = new HybridSignalAnalyzer();
     private final TradeExecutionEngine executionEngine = new TradeExecutionEngine();
     private final RegimeClassifier regimeClassifier = new RegimeClassifier();
@@ -451,6 +455,11 @@ public class HybridStrategyExecutor {
             HybridSignalAnalyzer.TradeSignal signal,
             double atrValue,
             String signalId) {
+
+        if (!executionEnabled) {
+            log.debug("[{}] 실행 비활성(execution.enabled=false) — 신호 로그만 저장, 주문 없음: {}", symbol, signal.getSignal());
+            return false;
+        }
 
         TradeExecutionEngine.TradingParameters params = TradeExecutionEngine.TradingParameters.builder()
                 .riskPerTrade(riskPerTrade)
