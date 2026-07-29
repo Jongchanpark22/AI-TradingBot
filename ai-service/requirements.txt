@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+xgboost
+scikit-learn==1.5.2
+pandas
+numpy
+SQLAlchemy
+PyMySQL
+joblib
