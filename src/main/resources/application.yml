@@ -41,6 +41,9 @@ trading:
   scheduler:
     enabled: true        # false로 바꾸면 전략 스케줄러 중지
 
+  execution:
+    enabled: false       # true: 실제 업비트 주문 제출 / false(기본): 신호·로그만, 주문 없음
+
   ai:
     base-url: http://localhost:8000   # Python ML 서버 주소
     timeout-ms: 800                   # ML 서버 응답 타임아웃 (ms)
