@@ -18,10 +18,11 @@ import static org.junit.jupiter.api.Assertions.*;
 class PositionMonitorTest {
 
     private final RiskManager risk = new RiskManager(new RiskParameters(
-            0.01, 1.5, 2.0, 1.0, 3.0, 0.05, 3));
+            0.01, 1.5, 2.0, 1.0, 0.5, 2.0, 0.5, 3.0, 1.5, 0.05, 3));
 
     private MonitoredPosition samplePosition() {
-        // entry=100, ATR=2, stop=100-3=97, TP=100+6=106
+        // entry=100, ATR=2, stop=97, TP=106, initRisk=3
+        // 1차 트리거: 100+3×1.0=103, 2차 트리거: 100+3×2.0=106
         return new MonitoredPosition(
                 1L, "KRW-BTC", 100.0,
                 97.0,    // initialStop
@@ -30,6 +31,7 @@ class PositionMonitorTest {
                 100.0,   // highestSeen
                 2.0,     // atr
                 false,   // partialDone
+                false,   // secondPartialDone
                 BigDecimal.valueOf(0.5),
                 false,   // aboveProfitTarget
                 null     // signalId
@@ -43,7 +45,7 @@ class PositionMonitorTest {
 
         TrailingDecision d = risk.updateTrailing(
                 mp.entryPrice, mp.initialStop, mp.currentStop,
-                price, mp.highestSeen, mp.atr, mp.partialDone);
+                price, mp.highestSeen, mp.atr, mp.partialDone, mp.secondPartialDone);
 
         assertTrue(d.shouldExitNow());
         assertFalse(d.shouldPartialExit());
@@ -56,7 +58,7 @@ class PositionMonitorTest {
 
         TrailingDecision d = risk.updateTrailing(
                 mp.entryPrice, mp.initialStop, mp.currentStop,
-                price, mp.highestSeen, mp.atr, mp.partialDone);
+                price, mp.highestSeen, mp.atr, mp.partialDone, mp.secondPartialDone);
 
         assertTrue(d.shouldExitNow());
     }
@@ -70,12 +72,31 @@ class PositionMonitorTest {
 
         TrailingDecision d = risk.updateTrailing(
                 mp.entryPrice, mp.initialStop, mp.currentStop,
-                price, mp.highestSeen, mp.atr, mp.partialDone);
+                price, mp.highestSeen, mp.atr, mp.partialDone, mp.secondPartialDone);
 
         assertFalse(d.shouldExitNow());
         assertTrue(d.shouldPartialExit());
+        assertFalse(d.shouldSecondPartialExit());
         // stop should move to break-even (entry price)
         assertEquals(100.0, d.newStopLoss(), 0.001);
+    }
+
+    @Test
+    void secondPartialExitAt2R() {
+        MonitoredPosition mp = samplePosition();
+        mp.partialDone = true;         // 1차 완료
+        mp.currentStop = 100.0;        // 손절 본전으로 이동된 상태
+        // +2R = 100 + 3×2.0 = 106
+        double price = 106.5;
+        mp.highestSeen = price;
+
+        TrailingDecision d = risk.updateTrailing(
+                mp.entryPrice, mp.initialStop, mp.currentStop,
+                price, mp.highestSeen, mp.atr, mp.partialDone, mp.secondPartialDone);
+
+        assertFalse(d.shouldExitNow());
+        assertFalse(d.shouldPartialExit());
+        assertTrue(d.shouldSecondPartialExit());
     }
 
     @Test
@@ -83,15 +104,17 @@ class PositionMonitorTest {
         MonitoredPosition mp = samplePosition();
         mp.partialDone = true;
         mp.currentStop = 100.0; // already at break-even
+        // price=104 < 2차 트리거(106) → 2차 청산도 발생 안 함
         double price = 104.0;
         mp.highestSeen = price;
 
         TrailingDecision d = risk.updateTrailing(
                 mp.entryPrice, mp.initialStop, mp.currentStop,
-                price, mp.highestSeen, mp.atr, mp.partialDone);
+                price, mp.highestSeen, mp.atr, mp.partialDone, mp.secondPartialDone);
 
         assertFalse(d.shouldExitNow());
         assertFalse(d.shouldPartialExit());
+        assertFalse(d.shouldSecondPartialExit());
     }
 
     @Test
@@ -100,15 +123,34 @@ class PositionMonitorTest {
         mp.partialDone = true;
         mp.currentStop = 100.0; // at break-even after partial
         mp.highestSeen = 110.0;
-        double price = 108.0;
+        // price=104 < 2차 트리거(106) → 기본 트레일링(3.0×ATR=6) 적용
+        // chandelier = 110 - 6 = 104
+        double price = 104.0;
 
-        // chandelier = 110 - 3.0 * 2.0 = 104
         TrailingDecision d = risk.updateTrailing(
                 mp.entryPrice, mp.initialStop, mp.currentStop,
-                price, mp.highestSeen, mp.atr, mp.partialDone);
+                price, mp.highestSeen, mp.atr, mp.partialDone, mp.secondPartialDone);
 
         assertFalse(d.shouldExitNow());
         assertEquals(104.0, d.newStopLoss(), 0.001);
+    }
+
+    @Test
+    void trailingStopTightensAfterSecondPartial() {
+        MonitoredPosition mp = samplePosition();
+        mp.partialDone = true;
+        mp.secondPartialDone = true;   // 2차 완료 → 강화 트레일링(1.5×ATR=3) 적용
+        mp.currentStop = 100.0;
+        mp.highestSeen = 110.0;
+        // chandelier = 110 - 3 = 107
+        double price = 108.0;
+
+        TrailingDecision d = risk.updateTrailing(
+                mp.entryPrice, mp.initialStop, mp.currentStop,
+                price, mp.highestSeen, mp.atr, mp.partialDone, mp.secondPartialDone);
+
+        assertFalse(d.shouldExitNow());
+        assertEquals(107.0, d.newStopLoss(), 0.001);
     }
 
     @Test
@@ -117,12 +159,12 @@ class PositionMonitorTest {
         mp.partialDone = true;
         mp.currentStop = 105.0; // already trailed high
         mp.highestSeen = 110.0;
-        double price = 108.0;
+        // price=103 < 2차 트리거(106) → 기본 트레일링(3.0×ATR=6) → chandelier=104 < 105 → 유지
+        double price = 103.0;
 
-        // chandelier = 110 - 6 = 104, but current is 105 → stays at 105
         TrailingDecision d = risk.updateTrailing(
                 mp.entryPrice, mp.initialStop, mp.currentStop,
-                price, mp.highestSeen, mp.atr, mp.partialDone);
+                price, mp.highestSeen, mp.atr, mp.partialDone, mp.secondPartialDone);
 
         assertEquals(105.0, d.newStopLoss(), 0.001);
     }
@@ -134,7 +176,7 @@ class PositionMonitorTest {
 
         TrailingDecision d = risk.updateTrailing(
                 mp.entryPrice, mp.initialStop, mp.currentStop,
-                price, mp.highestSeen, mp.atr, mp.partialDone);
+                price, mp.highestSeen, mp.atr, mp.partialDone, mp.secondPartialDone);
 
         assertFalse(d.shouldExitNow());
         assertFalse(d.shouldPartialExit());
@@ -148,20 +190,19 @@ class PositionMonitorTest {
         assertEquals(100.0, mp.entryPrice);
         assertEquals(97.0, mp.currentStop);
         assertFalse(mp.partialDone);
+        assertFalse(mp.secondPartialDone);
         assertEquals(0, BigDecimal.valueOf(0.5).compareTo(mp.quantity));
     }
 
     @Test
     void highestSeenUpdatesOnNewHigh() {
         MonitoredPosition mp = samplePosition();
-        // Simulate tick processing — highest seen updates
         double newPrice = 105.0;
         if (newPrice > mp.highestSeen) {
             mp.highestSeen = newPrice;
         }
         assertEquals(105.0, mp.highestSeen);
 
-        // lower price doesn't change it
         double lowerPrice = 103.0;
         if (lowerPrice > mp.highestSeen) {
             mp.highestSeen = lowerPrice;
@@ -170,32 +211,40 @@ class PositionMonitorTest {
     }
 
     @Test
-    void fullLifecycle_entryToTrailingStop() {
+    void fullLifecycle_twoPartialsThenTrailingExit() {
         MonitoredPosition mp = samplePosition();
-        // entry=100, stop=97, atr=2
+        // entry=100, stop=97, atr=2, initRisk=3
 
-        // price rises to 103 → partial exit at +1R
+        // 1. price 103.5 → 1차 청산 (+1R)
         mp.highestSeen = 103.5;
         TrailingDecision d1 = risk.updateTrailing(
                 mp.entryPrice, mp.initialStop, mp.currentStop,
-                103.5, mp.highestSeen, mp.atr, mp.partialDone);
+                103.5, mp.highestSeen, mp.atr, mp.partialDone, mp.secondPartialDone);
         assertTrue(d1.shouldPartialExit());
         mp.partialDone = true;
-        mp.currentStop = d1.newStopLoss(); // 100 (break-even)
+        mp.currentStop = d1.newStopLoss(); // 100.0 (break-even)
 
-        // price rises to 112 → trailing ratchets
-        mp.highestSeen = 112.0;
+        // 2. price 106.5 → 2차 청산 (+2R)
+        mp.highestSeen = 106.5;
         TrailingDecision d2 = risk.updateTrailing(
                 mp.entryPrice, mp.initialStop, mp.currentStop,
-                110.0, mp.highestSeen, mp.atr, mp.partialDone);
-        // chandelier = 112 - 6 = 106
-        assertEquals(106.0, d2.newStopLoss(), 0.001);
+                106.5, mp.highestSeen, mp.atr, mp.partialDone, mp.secondPartialDone);
+        assertTrue(d2.shouldSecondPartialExit());
+        mp.secondPartialDone = true;
         mp.currentStop = d2.newStopLoss();
 
-        // price drops to 105 → below trailing stop of 106 → exit
+        // 3. price 112 → 강화 트레일링 1.5×ATR=3 → chandelier=112-3=109
+        mp.highestSeen = 112.0;
         TrailingDecision d3 = risk.updateTrailing(
                 mp.entryPrice, mp.initialStop, mp.currentStop,
-                105.0, mp.highestSeen, mp.atr, mp.partialDone);
-        assertTrue(d3.shouldExitNow());
+                112.0, mp.highestSeen, mp.atr, mp.partialDone, mp.secondPartialDone);
+        assertEquals(109.0, d3.newStopLoss(), 0.001);
+        mp.currentStop = d3.newStopLoss();
+
+        // 4. price 108 < stop 109 → 청산
+        TrailingDecision d4 = risk.updateTrailing(
+                mp.entryPrice, mp.initialStop, mp.currentStop,
+                108.0, mp.highestSeen, mp.atr, mp.partialDone, mp.secondPartialDone);
+        assertTrue(d4.shouldExitNow());
     }
 }
