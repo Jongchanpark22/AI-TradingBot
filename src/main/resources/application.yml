@@ -95,6 +95,17 @@ upbit:
     access-key: ${UPBIT_ACCESS_KEY}
     secret-key: ${UPBIT_SECRET_KEY}
 
+# 뉴스·공시 API 설정
+dart:
+  api-key: ${DART_API_KEY:}             # DART Open API 키 (opendart.fss.or.kr)
+
+bigkinds:
+  api-key: ${BIGKINDS_API_KEY:}         # 빅카인즈 API 키 (bigkinds.or.kr)
+
+naver:
+  client-id: ${NAVER_CLIENT_ID:}        # 네이버 검색 API Client ID
+  client-secret: ${NAVER_CLIENT_SECRET:} # 네이버 검색 API Client Secret
+
 springdoc:
   api-docs:
     path: /v3/api-docs
