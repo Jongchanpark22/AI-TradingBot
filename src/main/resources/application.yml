@@ -106,6 +106,11 @@ naver:
   client-id: ${NAVER_CLIENT_ID:}        # 네이버 검색 API Client ID
   client-secret: ${NAVER_CLIENT_SECRET:} # 네이버 검색 API Client Secret
 
+# AI 기업 리포트 설정 (기능4)
+gemini:
+  api-key: ${GEMINI_API_KEY:}           # Google Gemini API 키 (aistudio.google.com/app/apikey)
+  model: gemini-1.5-flash               # 무료 티어 사용 가능 모델
+
 springdoc:
   api-docs:
     path: /v3/api-docs
