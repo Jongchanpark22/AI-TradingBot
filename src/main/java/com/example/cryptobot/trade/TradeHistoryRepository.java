@@ -47,4 +47,19 @@ public interface TradeHistoryRepository extends JpaRepository<TradeHistory, Long
     @Modifying
     @Transactional
     int deleteBySource(String source);
+
+    /**
+     * 특정 심볼의 과거 거래 통계 (기능1 과거 통계 전망용).
+     * [총 건수, 수익 건수, 최소 손익률, 최대 손익률, 평균 손익률]
+     */
+    @Query("""
+            SELECT COUNT(t),
+                   SUM(CASE WHEN t.profitRate > 0 THEN 1 ELSE 0 END),
+                   MIN(t.profitRate),
+                   MAX(t.profitRate),
+                   AVG(t.profitRate)
+            FROM TradeHistory t
+            WHERE t.symbol = :symbol
+            """)
+    Object[] symbolStats(@Param("symbol") String symbol);
 }
