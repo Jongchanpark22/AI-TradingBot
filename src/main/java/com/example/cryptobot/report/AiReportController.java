@@ -4,6 +4,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 /**
  * AI 기업 리포트 API.
  *
@@ -42,6 +44,27 @@ public class AiReportController {
             @PathVariable String corpCode,
             @PathVariable int businessYear) {
         return aiReportService.generateReport(corpCode, businessYear)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    /**
+     * 내 리포트 보관함 목록 조회.
+     * 3차 인증 구현 전까지 userId=1L 고정.
+     */
+    @GetMapping("/saved")
+    public List<SavedReport> listSaved() {
+        return aiReportService.listSavedReports();
+    }
+
+    /**
+     * 보관함 단건 조회.
+     *
+     * @param id 저장된 리포트 ID
+     */
+    @GetMapping("/saved/{id}")
+    public ResponseEntity<SavedReport> getSaved(@PathVariable Long id) {
+        return aiReportService.getSavedReport(id)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
