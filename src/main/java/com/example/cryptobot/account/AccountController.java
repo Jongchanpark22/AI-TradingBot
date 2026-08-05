@@ -17,11 +17,6 @@ public class AccountController {
         return ResponseEntity.ok(AccountResponse.from(accountService.getPrimaryAccount()));
     }
 
-    @PostMapping("/sync")
-    public ResponseEntity<AccountResponse> syncAccount() {
-        return ResponseEntity.ok(AccountResponse.from(accountService.syncBalanceFromUpbit()));
-    }
-
     @PutMapping("/activate")
     public ResponseEntity<Void> activateAccount() {
         accountService.activateAccount();
