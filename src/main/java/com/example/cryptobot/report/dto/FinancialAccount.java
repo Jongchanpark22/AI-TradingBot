@@ -3,6 +3,7 @@ package com.example.cryptobot.report.dto;
 /**
  * DART 재무제표 API 단일 계정 항목.
  *
+ * @param fsDiv           재무제표 종류 (CFS: 연결, OFS: 개별)
  * @param sjDiv           재무제표 구분 (BS: 재무상태표, IS: 손익계산서, CIS: 포괄손익)
  * @param accountNm       계정명 (예: 매출액, 영업이익, 자산총계)
  * @param thstrmAmount    당기 금액 (원, 콤마 포함 문자열)
@@ -10,6 +11,7 @@ package com.example.cryptobot.report.dto;
  * @param bfefrmtrmAmount 전전기 금액
  */
 public record FinancialAccount(
+        String fsDiv,
         String sjDiv,
         String accountNm,
         String thstrmAmount,

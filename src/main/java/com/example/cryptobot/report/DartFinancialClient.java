@@ -35,14 +35,14 @@ public class DartFinancialClient {
     private static final String DART_COMPANY_URL =
             "https://opendart.fss.or.kr/api/company.json";
 
-    /** 손익계산서 구분 코드 */
-    private static final String IS = "IS";
-
     /** 재무상태표 구분 코드 */
     private static final String BS = "BS";
 
     /** 사업보고서 코드 */
     private static final String ANNUAL_REPORT = "11011";
+
+    /** 연결재무제표 우선 (CFS), 없으면 개별(OFS) 사용 */
+    private static final String CFS = "CFS";
 
     private final RestTemplate upbitRestTemplate;
     private final ObjectMapper objectMapper;
@@ -108,6 +108,7 @@ public class DartFinancialClient {
             if (list.isArray()) {
                 for (JsonNode item : list) {
                     results.add(new FinancialAccount(
+                            item.path("fs_div").asText(),       // CFS(연결) / OFS(개별)
                             item.path("sj_div").asText(),
                             item.path("account_nm").asText(),
                             item.path("thstrm_amount").asText(),
@@ -149,18 +150,38 @@ public class DartFinancialClient {
     /**
      * 원본 계정 목록에서 재무 지표를 계산하여 CompanyFinancials를 생성합니다.
      * 모든 산술 연산은 이 메서드에서 수행됩니다 (LLM에 숫자 생성 위임 금지).
+     *
+     * <p>DART API는 동일 계정을 CFS(연결)·OFS(개별)로 이중 반환하므로
+     * CFS를 우선 선택합니다. CFS 없는 경우(소규모 기업) OFS 사용.</p>
      */
     private CompanyFinancials buildFinancials(
             String corpCode, String corpName, int businessYear,
             List<FinancialAccount> accounts) {
 
-        long revenue         = findAmount(accounts, IS, "매출액");
-        long revenuePrev     = findPrevAmount(accounts, IS, "매출액");
-        long operatingIncome = findAmount(accounts, IS, "영업이익");
-        long netIncome       = findAmount(accounts, IS, "당기순이익");
-        long totalAssets     = findAmount(accounts, BS, "자산총계");
-        long totalLiabilities = findAmount(accounts, BS, "부채총계");
-        long totalEquity     = findAmount(accounts, BS, "자본총계");
+        // CFS(연결) 우선, 없으면 OFS(개별) 폴백
+        List<FinancialAccount> preferred = filterByFsDiv(accounts, CFS);
+        if (preferred.isEmpty()) {
+            preferred = accounts;
+        }
+
+        // 매출액 — IS에 있음. 금융업 등은 "영업수익"이므로 둘 다 시도
+        long revenue = findByExact(preferred, "IS", "매출액");
+        if (revenue == 0) revenue = findByExact(preferred, "IS", "영업수익");
+
+        long revenuePrev = findPrevByExact(preferred, "IS", "매출액");
+        if (revenuePrev == 0) revenuePrev = findPrevByExact(preferred, "IS", "영업수익");
+
+        // 영업이익 — IS에 있음
+        long operatingIncome = findByExact(preferred, "IS", "영업이익");
+
+        // 당기순이익 — IS 또는 CIS에 있고, "(손실)" 변형이 있으므로 contains 매칭
+        // "법인세비용차감전순이익"과 구분하기 위해 "당기순이익"으로 시작하는 행 우선
+        long netIncome = findNetIncome(preferred);
+
+        // 재무상태표 — BS에 있음
+        long totalAssets      = findByExact(preferred, BS, "자산총계");
+        long totalLiabilities = findByExact(preferred, BS, "부채총계");
+        long totalEquity      = findByExact(preferred, BS, "자본총계");
 
         Double operatingMargin = divide(operatingIncome * 100.0, revenue);
         Double netMargin       = divide(netIncome * 100.0, revenue);
@@ -189,8 +210,19 @@ public class DartFinancialClient {
                 .build();
     }
 
-    /** 특정 재무제표 구분·계정명의 당기 금액을 찾습니다. */
-    private long findAmount(List<FinancialAccount> accounts, String sjDiv, String accountNm) {
+    /**
+     * fs_div(CFS/OFS)로 계정 목록을 필터링합니다.
+     */
+    private List<FinancialAccount> filterByFsDiv(List<FinancialAccount> accounts, String fsDiv) {
+        return accounts.stream()
+                .filter(a -> fsDiv.equals(a.fsDiv()))
+                .toList();
+    }
+
+    /**
+     * sjDiv·accountNm 정확 일치로 당기 금액을 찾습니다.
+     */
+    private long findByExact(List<FinancialAccount> accounts, String sjDiv, String accountNm) {
         return accounts.stream()
                 .filter(a -> sjDiv.equals(a.sjDiv()) && accountNm.equals(a.accountNm()))
                 .mapToLong(FinancialAccount::thstrmLong)
@@ -198,13 +230,38 @@ public class DartFinancialClient {
                 .orElse(0L);
     }
 
-    /** 특정 재무제표 구분·계정명의 전기 금액을 찾습니다. */
-    private long findPrevAmount(List<FinancialAccount> accounts, String sjDiv, String accountNm) {
+    /**
+     * sjDiv·accountNm 정확 일치로 전기 금액을 찾습니다.
+     */
+    private long findPrevByExact(List<FinancialAccount> accounts, String sjDiv, String accountNm) {
         return accounts.stream()
                 .filter(a -> sjDiv.equals(a.sjDiv()) && accountNm.equals(a.accountNm()))
                 .mapToLong(FinancialAccount::frmtrmLong)
                 .findFirst()
                 .orElse(0L);
+    }
+
+    /**
+     * 당기순이익을 IS/CIS 모두에서 찾습니다.
+     * DART는 기업에 따라 IS 또는 CIS에 기재하며, "당기순이익(손실)" 변형이 있습니다.
+     * "법인세비용차감전순이익"과 구분하기 위해 "당기순이익"으로 시작하는 행을 우선합니다.
+     */
+    private long findNetIncome(List<FinancialAccount> accounts) {
+        // 1순위: IS에서 "당기순이익"으로 시작하는 계정
+        return accounts.stream()
+                .filter(a -> ("IS".equals(a.sjDiv()) || "CIS".equals(a.sjDiv()))
+                        && a.accountNm() != null
+                        && a.accountNm().startsWith("당기순이익"))
+                .mapToLong(FinancialAccount::thstrmLong)
+                .findFirst()
+                // 2순위: contains 폴백 (IS 우선, CIS 후순위 순서로 stream이 정렬되어 있으면 자연스럽게 처리)
+                .orElseGet(() -> accounts.stream()
+                        .filter(a -> ("IS".equals(a.sjDiv()) || "CIS".equals(a.sjDiv()))
+                                && a.accountNm() != null
+                                && a.accountNm().contains("당기순이익"))
+                        .mapToLong(FinancialAccount::thstrmLong)
+                        .findFirst()
+                        .orElse(0L));
     }
 
     /** 분모가 0이면 null 반환 (산출 불가 표시용). */
