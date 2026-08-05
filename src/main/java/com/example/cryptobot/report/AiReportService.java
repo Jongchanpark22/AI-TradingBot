@@ -1,12 +1,15 @@
 package com.example.cryptobot.report;
 
 import com.example.cryptobot.report.dto.CompanyFinancials;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.time.Year;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -22,6 +25,8 @@ public class AiReportService {
 
     private final DartFinancialClient dartFinancialClient;
     private final LlmClient llmClient;
+    private final SavedReportRepository savedReportRepository;
+    private final ObjectMapper objectMapper;
 
     /**
      * 기업 코드로 AI 리포트를 생성합니다. 직전 사업연도를 자동으로 선택합니다.
@@ -75,8 +80,55 @@ public class AiReportService {
                 .generatedAt(LocalDateTime.now())
                 .build();
 
+        // 생성된 리포트를 보관함에 저장 (동일 기업·연도는 덮어쓰기)
+        saveReport(report, financials);
+
         log.info("AI 기업 리포트 생성 완료: corpCode={}, year={}", corpCode, businessYear);
         return Optional.of(report);
+    }
+
+    /**
+     * 보관함 목록 조회. 3차 인증 구현 전까지 userId=1L 고정.
+     */
+    public List<SavedReport> listSavedReports() {
+        return savedReportRepository.findByUserIdOrderByCreatedAtDesc(1L);
+    }
+
+    /**
+     * 보관함 단건 조회.
+     */
+    public Optional<SavedReport> getSavedReport(Long id) {
+        return savedReportRepository.findById(id);
+    }
+
+    /**
+     * 리포트를 보관함에 저장합니다. 동일 기업·연도가 이미 있으면 갱신합니다.
+     */
+    private void saveReport(AiReportResponse report, CompanyFinancials financials) {
+        try {
+            String contentJson = objectMapper.writeValueAsString(financials);
+            String sourceMeta = String.format("DART 사업보고서 %d년도 | 생성: %s",
+                    report.getBusinessYear(), report.getGeneratedAt());
+
+            SavedReport saved = savedReportRepository
+                    .findByUserIdAndTargetCodeAndBusinessYear(1L, report.getCorpCode(), report.getBusinessYear())
+                    .orElse(SavedReport.builder()
+                            .userId(1L)
+                            .targetType(SavedReport.TargetType.STOCK)
+                            .targetCode(report.getCorpCode())
+                            .build());
+
+            saved.setTargetName(report.getCorpName());
+            saved.setBusinessYear(report.getBusinessYear());
+            saved.setNarrative(report.getNarrative());
+            saved.setContentJson(contentJson);
+            saved.setSourceMeta(sourceMeta);
+
+            savedReportRepository.save(saved);
+            log.debug("리포트 보관함 저장: corpCode={}, year={}", report.getCorpCode(), report.getBusinessYear());
+        } catch (JsonProcessingException e) {
+            log.warn("리포트 JSON 직렬화 실패 — 보관함 저장 건너뜀: {}", e.getMessage());
+        }
     }
 
     /**
