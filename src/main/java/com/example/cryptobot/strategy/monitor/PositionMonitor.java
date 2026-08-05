@@ -21,6 +21,7 @@ import com.example.cryptobot.strategy.risk.TrailingDecision;
 import com.example.cryptobot.trade.TradeHistory;
 import com.example.cryptobot.trade.TradeHistoryService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
@@ -71,6 +72,10 @@ public class PositionMonitor {
     private final UpbitMarketService upbitMarketService;
     private final CandleRepository candleRepository;
 
+    /** false: 자동매매 비활성 → 기동 시 업비트 인증 호출 및 WebSocket 모니터링 스킵 */
+    @Value("${trading.scheduler.enabled:false}")
+    private boolean schedulerEnabled;
+
     /** In-memory snapshot of monitored positions, keyed by symbol. */
     private final Map<String, MonitoredPosition> monitored = new ConcurrentHashMap<>();
 
@@ -99,6 +104,11 @@ public class PositionMonitor {
 
     @EventListener(ApplicationReadyEvent.class)
     public void initialize() {
+        // trading.scheduler.enabled=false 이면 업비트 인증 호출·WebSocket 모니터링 전부 스킵
+        if (!schedulerEnabled) {
+            log.info("PositionMonitor 비활성(scheduler.enabled=false) — 업비트 인증 호출·WebSocket 건너뜀");
+            return;
+        }
         // 업비트 실제 보유 코인과 DB 포지션 자동 싱크
         syncPositionsFromUpbit();
 

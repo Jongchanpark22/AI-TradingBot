@@ -86,18 +86,59 @@ public class NewsService {
     // ─── 뉴스 수집 ──────────────────────────────────────────────────────────
 
     /**
-     * 30분 주기 — RSS 전체 피드 폴링 (키 불필요, 빠른 갱신).
+     * 30분 주기 + 기동 직후 1회 즉시 실행 — RSS 전체 피드 폴링 (키 불필요, 빠른 갱신).
      * 모든 설정된 RSS 피드를 수집하여 중복 제거 후 저장합니다.
      */
-    @Scheduled(cron = "0 */30 * * * *")
+    @Scheduled(initialDelay = 0, fixedDelay = 30 * 60 * 1000L)
     @Transactional
     public void collectRssAll() {
-        List<NewsItem> items = rssNewsCollector.fetchAll(50);
-        int saved = saveNewsItems(items);
-        if (saved > 0) {
-            log.info("RSS 전체 폴링 완료: {}건 신규 저장", saved);
-        }
+        RssNewsCollector.FetchSummary summary = rssNewsCollector.fetchAll(50);
+        int saved = saveNewsItems(summary.items());
+        log.info("RSS 전체 폴링 완료: 시도={}개, 성공={}개, 실패={}개, 신규저장={}건",
+                summary.tried(), summary.succeeded(), summary.failed(), saved);
     }
+
+    /**
+     * RSS 수집 결과 요약 반환 (수동 트리거 용도).
+     * 스케줄러와 별개로 즉시 수집 후 결과를 응답으로 반환합니다.
+     */
+    @Transactional
+    public CollectResult triggerRssCollect() {
+        RssNewsCollector.FetchSummary summary = rssNewsCollector.fetchAll(50);
+        int saved = saveNewsItems(summary.items());
+        log.info("[수동트리거] RSS 수집 완료: 시도={}, 성공={}, 실패={}, 저장={}",
+                summary.tried(), summary.succeeded(), summary.failed(), saved);
+        return new CollectResult(summary.tried(), summary.succeeded(), summary.failed(), saved);
+    }
+
+    /**
+     * DART 공시 즉시 수집 (수동 트리거 용도).
+     */
+    @Transactional
+    public int triggerDartCollect() {
+        log.info("[수동트리거] DART 공시 수집 시작");
+        LocalDate yesterday = LocalDate.now().minusDays(1);
+        LocalDate today     = LocalDate.now();
+        List<DartApiClient.DartRawItem> rawItems = dartApiClient.fetchDisclosures(yesterday, today);
+        Set<String> watchedSymbols = collectWatchedSymbols();
+        int saved = 0;
+        for (DartApiClient.DartRawItem raw : rawItems) {
+            if (dartRepository.existsByRceptNo(raw.rceptNo())) continue;
+            String linkedSymbol = matchSymbol(raw.corpName(), watchedSymbols);
+            DartDisclosure disclosure = DartDisclosure.builder()
+                    .rceptNo(raw.rceptNo()).corpCode(raw.corpCode()).corpName(raw.corpName())
+                    .title(raw.reportNm()).disclosureDate(parseDate(raw.rceptDt()))
+                    .url(raw.url()).linkedSymbol(linkedSymbol).reportType(raw.reportNm())
+                    .build();
+            dartRepository.save(disclosure);
+            saved++;
+        }
+        log.info("[수동트리거] DART 수집 완료: {}건 저장 (전체 {}건)", saved, rawItems.size());
+        return saved;
+    }
+
+    /** 수동 수집 결과 요약 DTO */
+    public record CollectResult(int feedsTried, int feedsSucceeded, int feedsFailed, int newsSaved) {}
 
     /**
      * 30분 주기 — 보유/관심 종목 키워드 뉴스 수집.

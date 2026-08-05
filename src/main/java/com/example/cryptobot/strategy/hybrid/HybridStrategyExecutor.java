@@ -104,6 +104,10 @@ public class HybridStrategyExecutor {
     @Value("${trading.execution.enabled:false}")
     private boolean executionEnabled;
 
+    /** false: 15분 전략 스케줄러 전체 중지 (자동매매 비서 피벗 후 기본값 false) */
+    @Value("${trading.scheduler.enabled:false}")
+    private boolean schedulerEnabled;
+
     private final HybridSignalAnalyzer signalAnalyzer = new HybridSignalAnalyzer();
     private final TradeExecutionEngine executionEngine = new TradeExecutionEngine();
     private final RegimeClassifier regimeClassifier = new RegimeClassifier();
@@ -113,6 +117,11 @@ public class HybridStrategyExecutor {
     /** 15분마다 실행 — 15분봉 50개 기준으로 신호 분석 (노이즈 감소) */
     @Scheduled(cron = "0 0/15 * * * *")
     public void executeHybridStrategy15Min() {
+        // trading.scheduler.enabled=false 이면 전략 실행 건너뜀
+        if (!schedulerEnabled) {
+            log.debug("[15분 전략] 스케줄러 비활성(scheduler.enabled=false) — 건너뜀");
+            return;
+        }
         log.info("[15분 전략] 실행 시작");
         executeStrategy(Candle.CandlePeriod.FIFTEEN_MIN, 15, "15분");
     }

@@ -39,7 +39,7 @@ spring:
 
 trading:
   scheduler:
-    enabled: true        # false로 바꾸면 전략 스케줄러 중지
+    enabled: false       # true: 전략 스케줄러 활성 / false(기본): 자동매매 스케줄러 중지
 
   execution:
     enabled: false       # true: 실제 업비트 주문 제출 / false(기본): 신호·로그만, 주문 없음
