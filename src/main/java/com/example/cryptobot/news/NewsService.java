@@ -2,8 +2,10 @@ package com.example.cryptobot.news;
 
 import com.example.cryptobot.holding.UserHoldingRepository;
 import com.example.cryptobot.holding.WatchlistRepository;
+import com.example.cryptobot.news.dto.NewsFeedResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,8 +22,9 @@ import java.util.stream.Collectors;
  * 뉴스·공시 수집 서비스.
  *
  * <ul>
- *   <li>DART 공시: 매일 오전 8시 수집, 보유/관심 종목명 매칭</li>
- *   <li>빅카인즈·네이버 뉴스: 매일 오전 8시 30분 수집, 보유/관심 종목 키워드 검색</li>
+ *   <li>DART 공시: 매일 오전 8시 수집</li>
+ *   <li>RSS 전체 폴링: 30분 주기 (키 불필요)</li>
+ *   <li>종목별 뉴스: 30분 주기 (등록된 NewsSource 활용)</li>
  * </ul>
  */
 @Slf4j
@@ -35,6 +38,7 @@ public class NewsService {
     private final UserHoldingRepository holdingRepository;
     private final WatchlistRepository watchlistRepository;
     private final List<NewsSource> newsSources;
+    private final RssNewsCollector rssNewsCollector;
 
     // ─── DART 공시 수집 ──────────────────────────────────────────────────────
 
@@ -82,40 +86,43 @@ public class NewsService {
     // ─── 뉴스 수집 ──────────────────────────────────────────────────────────
 
     /**
-     * 매일 오전 8시 30분 — 보유/관심 종목 키워드 뉴스 수집.
-     * 빅카인즈, 네이버 뉴스 순으로 수집 (API 키 미설정 시 건너뜀).
+     * 30분 주기 — RSS 전체 피드 폴링 (키 불필요, 빠른 갱신).
+     * 모든 설정된 RSS 피드를 수집하여 중복 제거 후 저장합니다.
      */
-    @Scheduled(cron = "0 30 8 * * *")
+    @Scheduled(cron = "0 */30 * * * *")
     @Transactional
-    public void collectNews() {
+    public void collectRssAll() {
+        List<NewsItem> items = rssNewsCollector.fetchAll(50);
+        int saved = saveNewsItems(items);
+        if (saved > 0) {
+            log.info("RSS 전체 폴링 완료: {}건 신규 저장", saved);
+        }
+    }
+
+    /**
+     * 30분 주기 — 보유/관심 종목 키워드 뉴스 수집.
+     * 등록된 NewsSource(RSS 등)를 활용합니다.
+     */
+    @Scheduled(cron = "0 15 */1 * * *")
+    @Transactional
+    public void collectNewsBySymbol() {
         Set<String> symbols = collectWatchedSymbols();
         if (symbols.isEmpty()) {
-            log.debug("보유/관심 종목 없음 — 뉴스 수집 건너뜀");
+            log.debug("보유/관심 종목 없음 — 종목별 뉴스 수집 건너뜀");
             return;
         }
 
-        log.info("뉴스 수집 시작: {} 종목", symbols.size());
+        log.info("종목별 뉴스 수집 시작: {} 종목", symbols.size());
         int total = 0;
 
         for (String symbol : symbols) {
             for (NewsSource source : newsSources) {
                 List<NewsItem> items = source.collect(symbol, 20);
-                List<NewsItem> toSave = new ArrayList<>();
-
-                for (NewsItem item : items) {
-                    if (!newsItemRepository.existsByUrl(item.getUrl())) {
-                        toSave.add(item);
-                    }
-                }
-
-                if (!toSave.isEmpty()) {
-                    newsItemRepository.saveAll(toSave);
-                    total += toSave.size();
-                }
+                total += saveNewsItems(items);
             }
         }
 
-        log.info("뉴스 수집 완료: {}건 저장", total);
+        log.info("종목별 뉴스 수집 완료: {}건 신규 저장", total);
     }
 
     // ─── 조회 API ─────────────────────────────────────────────────────────────
@@ -136,14 +143,109 @@ public class NewsService {
     }
 
     /**
-     * 최근 N시간 뉴스 목록 반환.
+     * 최근 N시간 뉴스 목록 반환 (기존 호환용).
      */
     public List<NewsItem> getRecentNews(int hours) {
         LocalDateTime from = LocalDateTime.now().minusHours(hours);
         return newsItemRepository.findByPublishedAtGreaterThanEqualOrderByPublishedAtDesc(from);
     }
 
+    /**
+     * 커서 기반 뉴스 피드 페이지네이션.
+     *
+     * @param cursor 이전 응답의 nextCursor (null이면 첫 페이지)
+     * @param size   페이지 크기 (1~50)
+     * @param sort   "latest" 또는 "views"
+     */
+    @Transactional
+    public NewsFeedResponse getNewsFeed(String cursor, int size, String sort) {
+        int pageSize = Math.min(Math.max(size, 1), 50);
+        PageRequest pageable = PageRequest.of(0, pageSize + 1); // +1로 다음 페이지 존재 여부 확인
+
+        List<NewsItem> rows;
+
+        if ("views".equals(sort)) {
+            long[] parsed = parseCursorViews(cursor);
+            rows = newsItemRepository.findByViewsCursor(
+                    cursor == null ? null : parsed[0],
+                    cursor == null ? null : parsed[1],
+                    pageable);
+        } else {
+            Object[] parsed = parseCursorLatest(cursor);
+            rows = newsItemRepository.findByLatestCursor(
+                    (LocalDateTime) parsed[0],
+                    (Long) parsed[1],
+                    pageable);
+        }
+
+        boolean hasNext = rows.size() > pageSize;
+        List<NewsItem> items = hasNext ? rows.subList(0, pageSize) : rows;
+        String nextCursor = hasNext ? buildCursor(items.get(items.size() - 1), sort) : null;
+
+        return NewsFeedResponse.builder()
+                .items(items)
+                .nextCursor(nextCursor)
+                .size(items.size())
+                .build();
+    }
+
+    /**
+     * 뉴스 단건 조회 + 조회수 증가.
+     */
+    @Transactional
+    public java.util.Optional<NewsItem> getNewsItem(Long id) {
+        return newsItemRepository.findById(id).map(item -> {
+            newsItemRepository.incrementViewCount(id);
+            return item;
+        });
+    }
+
+    // ─── 커서 파싱·빌드 ──────────────────────────────────────────────────────
+
+    private static final DateTimeFormatter CURSOR_FMT =
+            DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
+
+    /** 최신순 커서: "yyyyMMddHHmmss_id" */
+    private Object[] parseCursorLatest(String cursor) {
+        if (cursor == null) return new Object[]{null, null};
+        try {
+            String[] parts = cursor.split("_");
+            return new Object[]{LocalDateTime.parse(parts[0], CURSOR_FMT), Long.parseLong(parts[1])};
+        } catch (Exception e) {
+            return new Object[]{null, null};
+        }
+    }
+
+    /** 조회수순 커서: "views_id" */
+    private long[] parseCursorViews(String cursor) {
+        if (cursor == null) return new long[]{Long.MAX_VALUE, Long.MAX_VALUE};
+        try {
+            String[] parts = cursor.split("_");
+            return new long[]{Long.parseLong(parts[0]), Long.parseLong(parts[1])};
+        } catch (Exception e) {
+            return new long[]{Long.MAX_VALUE, Long.MAX_VALUE};
+        }
+    }
+
+    private String buildCursor(NewsItem last, String sort) {
+        if ("views".equals(sort)) {
+            return last.getViewCount() + "_" + last.getId();
+        }
+        return last.getPublishedAt().format(CURSOR_FMT) + "_" + last.getId();
+    }
+
     // ─── 내부 유틸 ────────────────────────────────────────────────────────────
+
+    /** 중복 URL 제외 후 저장, 저장 건수 반환. */
+    private int saveNewsItems(List<NewsItem> items) {
+        List<NewsItem> toSave = items.stream()
+                .filter(item -> !newsItemRepository.existsByUrl(item.getUrl()))
+                .toList();
+        if (!toSave.isEmpty()) {
+            newsItemRepository.saveAll(toSave);
+        }
+        return toSave.size();
+    }
 
     /**
      * 보유 종목 + 관심 종목 심볼 코드를 수집합니다.
