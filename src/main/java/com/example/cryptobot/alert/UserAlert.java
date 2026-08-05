@@ -23,6 +23,17 @@ public class UserAlert extends BaseEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    /** 사용자 ID (3차 User 엔티티 연결 전까지 1L 기본값) */
+    @Column(name = "user_id", nullable = false)
+    @Builder.Default
+    private Long userId = 1L;
+
+    /** 알림 타입 */
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    @Builder.Default
+    private AlertType type = AlertType.INDICATOR;
+
     /** 감시할 심볼 (예: KRW-BTC) */
     @Column(nullable = false)
     private String symbol;
@@ -51,4 +62,8 @@ public class UserAlert extends BaseEntity {
     @Builder.Default
     @Column(nullable = false)
     private Integer cooldownMinutes = 60;
+
+    public enum AlertType {
+        PRICE, INDICATOR, NEWS
+    }
 }
