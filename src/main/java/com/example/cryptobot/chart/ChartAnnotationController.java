@@ -1,0 +1,97 @@
+package com.example.cryptobot.chart;
+
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+/**
+ * 차트 주석·커스텀 지표 설정 API.
+ * userId는 3차 인증 연결 전까지 1L 고정.
+ */
+@RestController
+@RequestMapping("/chart")
+@RequiredArgsConstructor
+public class ChartAnnotationController {
+
+    private final UserChartAnnotationRepository annotationRepository;
+    private final UserIndicatorSettingRepository indicatorRepository;
+
+    // ─── 차트 주석 ────────────────────────────────────────────────────────────
+
+    /**
+     * 심볼별 차트 주석 목록 조회.
+     *
+     * @param symbol 마켓 코드 (예: KRW-BTC)
+     */
+    @GetMapping("/{symbol}/annotations")
+    public List<UserChartAnnotation> getAnnotations(@PathVariable String symbol) {
+        return annotationRepository.findByUserIdAndSymbolOrderByCreatedAtDesc(1L, symbol);
+    }
+
+    /**
+     * 차트 주석 추가.
+     * body 예: {"symbol":"KRW-BTC","type":"LINE","pointsJson":"[...]","note":"지지선"}
+     */
+    @PostMapping("/{symbol}/annotations")
+    @Transactional
+    public ResponseEntity<UserChartAnnotation> addAnnotation(
+            @PathVariable String symbol,
+            @RequestBody UserChartAnnotation request) {
+        request.setUserId(1L);
+        request.setSymbol(symbol);
+        return ResponseEntity.ok(annotationRepository.save(request));
+    }
+
+    /**
+     * 차트 주석 삭제.
+     */
+    @DeleteMapping("/{symbol}/annotations/{id}")
+    @Transactional
+    public ResponseEntity<Void> deleteAnnotation(
+            @PathVariable String symbol,
+            @PathVariable Long id) {
+        annotationRepository.deleteById(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    // ─── 커스텀 지표 설정 ──────────────────────────────────────────────────────
+
+    /**
+     * 심볼별 커스텀 지표 설정 목록 조회.
+     *
+     * @param symbol 마켓 코드 (예: KRW-BTC)
+     */
+    @GetMapping("/{symbol}/indicators/settings")
+    public List<UserIndicatorSetting> getIndicatorSettings(@PathVariable String symbol) {
+        return indicatorRepository.findByUserIdAndSymbolOrderByCreatedAtDesc(1L, symbol);
+    }
+
+    /**
+     * 커스텀 지표 설정 추가.
+     * body 예: {"indicatorType":"RSI","paramsJson":"{\"period\":14}","enabled":true}
+     */
+    @PostMapping("/{symbol}/indicators/settings")
+    @Transactional
+    public ResponseEntity<UserIndicatorSetting> addIndicatorSetting(
+            @PathVariable String symbol,
+            @RequestBody UserIndicatorSetting request) {
+        request.setUserId(1L);
+        request.setSymbol(symbol);
+        return ResponseEntity.ok(indicatorRepository.save(request));
+    }
+
+    /**
+     * 커스텀 지표 설정 삭제.
+     */
+    @DeleteMapping("/{symbol}/indicators/settings/{id}")
+    @Transactional
+    public ResponseEntity<Void> deleteIndicatorSetting(
+            @PathVariable String symbol,
+            @PathVariable Long id) {
+        indicatorRepository.deleteById(id);
+        return ResponseEntity.noContent().build();
+    }
+}

@@ -9,4 +9,6 @@ public interface UserAlertRepository extends JpaRepository<UserAlert, Long> {
     List<UserAlert> findAllByEnabledTrue();
 
     List<UserAlert> findAllBySymbolAndEnabledTrue(String symbol);
+
+    List<UserAlert> findByUserIdOrderByCreatedAtDesc(Long userId);
 }
