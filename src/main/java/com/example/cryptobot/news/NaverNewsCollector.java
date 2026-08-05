@@ -23,9 +23,11 @@ import java.util.Locale;
  * 무료 (일 25,000회), 키워드 기반 검색.
  * 환경변수 NAVER_CLIENT_ID, NAVER_CLIENT_SECRET 필요.
  * API 문서: https://developers.naver.com/docs/serviceapi/search/news/news.md
+ *
+ * <p>현재 미활성화(유료화 가능성으로 보류). @Component 제거 → Spring 미등록.
+ * 키 발급 후 @Component 복원하면 NewsService에 자동 주입됩니다.</p>
  */
 @Slf4j
-@Component
 @RequiredArgsConstructor
 public class NaverNewsCollector implements NewsSource {
 

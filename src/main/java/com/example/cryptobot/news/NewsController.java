@@ -1,6 +1,8 @@
 package com.example.cryptobot.news;
 
+import com.example.cryptobot.news.dto.NewsFeedResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -39,7 +41,7 @@ public class NewsController {
     }
 
     /**
-     * 최근 뉴스 목록 조회.
+     * 최근 뉴스 목록 조회 (기존 호환용).
      *
      * @param hours 최근 N시간 (기본 24시간, 최대 72시간)
      */
@@ -47,5 +49,32 @@ public class NewsController {
     public List<NewsItem> getNews(
             @RequestParam(defaultValue = "24") int hours) {
         return newsService.getRecentNews(Math.min(hours, 72));
+    }
+
+    /**
+     * 뉴스 피드 (커서 페이지네이션).
+     *
+     * @param cursor 이전 응답의 nextCursor (생략 시 첫 페이지)
+     * @param size   페이지 크기 (기본 20, 최대 50)
+     * @param sort   정렬 기준: latest(최신순, 기본) | views(조회수순)
+     */
+    @GetMapping("/feed")
+    public NewsFeedResponse getFeed(
+            @RequestParam(required = false) String cursor,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "latest") String sort) {
+        return newsService.getNewsFeed(cursor, size, sort);
+    }
+
+    /**
+     * 뉴스 단건 조회 (조회수 +1).
+     *
+     * @param id 뉴스 아이템 ID
+     */
+    @GetMapping("/items/{id}")
+    public ResponseEntity<NewsItem> getNewsItem(@PathVariable Long id) {
+        return newsService.getNewsItem(id)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
     }
 }

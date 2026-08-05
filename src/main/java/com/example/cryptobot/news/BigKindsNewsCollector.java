@@ -20,9 +20,11 @@ import java.util.Map;
  * 빅카인즈(한국언론진흥재단) 뉴스 검색 API 수집기.
  * API 문서: https://www.bigkinds.or.kr/v2/news/search.do
  * 환경변수 BIGKINDS_API_KEY 필요.
+ *
+ * <p>현재 미활성화(유료화로 보류). @Component 제거 → Spring 미등록.
+ * 키 발급 후 @Component 복원하면 NewsService에 자동 주입됩니다.</p>
  */
 @Slf4j
-@Component
 @RequiredArgsConstructor
 public class BigKindsNewsCollector implements NewsSource {
 

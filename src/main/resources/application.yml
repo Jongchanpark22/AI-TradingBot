@@ -111,6 +111,16 @@ gemini:
   api-key: ${GEMINI_API_KEY:}           # Google Gemini API 키 (aistudio.google.com/app/apikey)
   model: gemini-1.5-flash               # 무료 티어 사용 가능 모델
 
+# 뉴스 RSS 피드 설정 (기능3, 키 불필요)
+# 실제 RSS 주소는 각 언론사 RSS 페이지에서 확인 후 쉼표로 구분하여 입력
+news:
+  rss:
+    urls: >
+      https://www.yna.co.kr/rss/economy.xml,
+      https://www.hankyung.com/feed/economy,
+      https://www.mk.co.kr/rss/30000001/,
+      https://www.edaily.co.kr/rss/rssnewslist.asp?fl=pop2
+
 springdoc:
   api-docs:
     path: /v3/api-docs

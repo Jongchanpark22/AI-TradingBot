@@ -60,4 +60,9 @@ public class NewsItem extends BaseEntity {
      */
     @Column(columnDefinition = "TEXT")
     private String linkedSymbols;
+
+    /** 조회수 (커서 페이지네이션 views 정렬용) */
+    @Column(name = "view_count", nullable = false)
+    @Builder.Default
+    private long viewCount = 0L;
 }
