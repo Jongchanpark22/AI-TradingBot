@@ -62,9 +62,11 @@ public class RssNewsCollector implements NewsSource {
             String feedUrl = rawUrl.trim();
             if (feedUrl.isEmpty()) continue;
             try {
-                results.addAll(fetchFromFeed(feedUrl, keyword, maxResults));
+                List<NewsItem> items = fetchFromFeed(feedUrl, keyword, maxResults);
+                results.addAll(items);
+                log.info("RSS OK   {} (키워드='{}', {}건 파싱)", feedUrl, keyword, items.size());
             } catch (Exception e) {
-                log.warn("RSS 피드 수집 실패: url={}, 오류={}", feedUrl, e.getMessage());
+                log.warn("RSS FAIL {} cause={}", feedUrl, e.getMessage());
             }
         }
 
@@ -73,26 +75,43 @@ public class RssNewsCollector implements NewsSource {
 
     /**
      * RSS 피드를 전체 수집합니다 (키워드 필터 없음). NewsService 전체 폴링용.
+     * 피드별 성공/실패를 INFO/WARN으로 기록하며, 실패해도 다음 피드를 계속 수집합니다.
+     *
+     * @return (시도, 성공, 실패, 총 파싱 건수) 요약 집계
      */
-    public List<NewsItem> fetchAll(int maxPerFeed) {
+    public FetchSummary fetchAll(int maxPerFeed) {
+        int tried = 0, succeeded = 0, failed = 0;
         List<NewsItem> results = new ArrayList<>();
 
         if (rssFeedUrls == null || rssFeedUrls.isBlank()) {
-            return results;
+            log.warn("RSS 피드 URL 미설정 (news.rss.urls) — 수집 건너뜀");
+            return new FetchSummary(0, 0, 0, results);
         }
 
         for (String rawUrl : rssFeedUrls.split(",")) {
             String feedUrl = rawUrl.trim();
             if (feedUrl.isEmpty()) continue;
+            tried++;
             try {
-                results.addAll(fetchFromFeed(feedUrl, null, maxPerFeed));
+                List<NewsItem> items = fetchFromFeed(feedUrl, null, maxPerFeed);
+                results.addAll(items);
+                if (items.isEmpty()) {
+                    log.info("RSS OK   {} (0건 — 빈 피드이거나 항목 없음)", feedUrl);
+                } else {
+                    log.info("RSS OK   {} ({}건 파싱)", feedUrl, items.size());
+                }
+                succeeded++;
             } catch (Exception e) {
-                log.warn("RSS 전체 수집 실패: url={}, 오류={}", feedUrl, e.getMessage());
+                log.warn("RSS FAIL {} cause={}", feedUrl, e.getMessage());
+                failed++;
             }
         }
 
-        return results;
+        return new FetchSummary(tried, succeeded, failed, results);
     }
+
+    /** fetchAll() 결과 요약 */
+    public record FetchSummary(int tried, int succeeded, int failed, List<NewsItem> items) {}
 
     /**
      * 단일 RSS 피드에서 기사를 파싱합니다.
