@@ -53,17 +53,22 @@ public class NewsController {
 
     /**
      * 뉴스 피드 (커서 페이지네이션).
+     * 종목·테마 필터는 저장 시점이 아닌 조회 시점에 적용됩니다.
      *
-     * @param cursor 이전 응답의 nextCursor (생략 시 첫 페이지)
-     * @param size   페이지 크기 (기본 20, 최대 50)
-     * @param sort   정렬 기준: latest(최신순, 기본) | views(조회수순)
+     * @param cursor  이전 응답의 nextCursor (생략 시 첫 페이지)
+     * @param size    페이지 크기 (기본 20, 최대 50)
+     * @param sort    정렬 기준: latest(최신순, 기본) | views(조회수순)
+     * @param symbols 종목 코드 필터 (예: KRW-BTC) — 생략 시 전체
+     * @param themes  테마 키워드 필터 (예: 금리) — 생략 시 전체
      */
     @GetMapping("/feed")
     public NewsFeedResponse getFeed(
             @RequestParam(required = false) String cursor,
             @RequestParam(defaultValue = "20") int size,
-            @RequestParam(defaultValue = "latest") String sort) {
-        return newsService.getNewsFeed(cursor, size, sort);
+            @RequestParam(defaultValue = "latest") String sort,
+            @RequestParam(required = false) String symbols,
+            @RequestParam(required = false) String themes) {
+        return newsService.getNewsFeed(cursor, size, sort, symbols, themes);
     }
 
     /**
