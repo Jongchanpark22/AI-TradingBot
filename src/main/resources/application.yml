@@ -116,10 +116,11 @@ gemini:
 news:
   rss:
     urls: >
-      https://www.yna.co.kr/rss/economy.xml,
       https://www.hankyung.com/feed/economy,
-      https://www.mk.co.kr/rss/30000001/,
-      https://www.edaily.co.kr/rss/rssnewslist.asp?fl=pop2
+      https://www.yna.co.kr/rss/economy.xml,
+      https://www.mk.co.kr/rss/30000001/
+  retention:
+    days: 90          # 보존 기간(일) — 이 기간 초과 news_item은 매일 새벽 3시 자동 삭제
 
 springdoc:
   api-docs:

@@ -62,4 +62,9 @@ public interface NewsItemRepository extends JpaRepository<NewsItem, Long> {
     @Modifying
     @Query("UPDATE NewsItem n SET n.viewCount = n.viewCount + 1 WHERE n.id = :id")
     void incrementViewCount(@Param("id") Long id);
+
+    /** 보존 기간 초과 뉴스 일괄 삭제, 삭제 건수 반환. */
+    @Modifying
+    @Query("DELETE FROM NewsItem n WHERE n.publishedAt < :cutoff")
+    int deleteByPublishedAtBefore(@Param("cutoff") LocalDateTime cutoff);
 }
