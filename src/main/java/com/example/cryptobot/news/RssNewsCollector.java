@@ -18,6 +18,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * 언론사 RSS 피드 수집기.
@@ -29,8 +30,38 @@ import java.util.Locale;
 @RequiredArgsConstructor
 public class RssNewsCollector implements NewsSource {
 
-    private static final DateTimeFormatter RFC_822 =
-            DateTimeFormatter.ofPattern("EEE, dd MMM yyyy HH:mm:ss Z", Locale.ENGLISH);
+    /**
+     * RFC 822 날짜 포맷 변형 목록.
+     * 한국 언론사는 "dd"(두 자리) 또는 "d"(한 자리) 일자를 혼용하므로 두 패턴을 모두 시도합니다.
+     */
+    private static final List<DateTimeFormatter> PUBDATE_FORMATS = List.of(
+            DateTimeFormatter.ofPattern("EEE, dd MMM yyyy HH:mm:ss Z", Locale.ENGLISH),
+            DateTimeFormatter.ofPattern("EEE, d MMM yyyy HH:mm:ss Z",  Locale.ENGLISH),
+            DateTimeFormatter.ofPattern("dd MMM yyyy HH:mm:ss Z",       Locale.ENGLISH),
+            DateTimeFormatter.ofPattern("d MMM yyyy HH:mm:ss Z",        Locale.ENGLISH)
+    );
+
+    /**
+     * DateTimeFormatter의 'Z' 패턴은 "+0900" 형태는 파싱하지만
+     * "KST", "GMT" 같은 타임존 약어는 파싱하지 못합니다.
+     * 파싱 전 약어를 UTC 오프셋 문자열로 치환합니다.
+     */
+    private static final Map<String, String> TZ_ABBR = Map.ofEntries(
+            Map.entry("KST", "+0900"),
+            Map.entry("JST", "+0900"),
+            Map.entry("EST", "-0500"),
+            Map.entry("EDT", "-0400"),
+            Map.entry("CST", "-0600"),
+            Map.entry("CDT", "-0500"),
+            Map.entry("MST", "-0700"),
+            Map.entry("MDT", "-0600"),
+            Map.entry("PST", "-0800"),
+            Map.entry("PDT", "-0700"),
+            Map.entry("UTC", "+0000")
+    );
+
+    private final NewsClassifier classifier;
+    private final NewsSymbolMatcher symbolMatcher;
 
     /** RSS 피드 URL 목록 (쉼표 구분, application.yml에서 관리) */
     @Value("${news.rss.urls:}")
@@ -147,13 +178,15 @@ public class RssNewsCollector implements NewsSource {
                         ? description.replaceAll("<[^>]+>", "").trim()
                         : null;
 
+                String trimTitle = title != null ? title.trim() : "제목 없음";
                 items.add(NewsItem.builder()
                         .source(sourceName())
                         .url(link.trim())
-                        .title(title != null ? title.trim() : "제목 없음")
+                        .title(trimTitle)
                         .summary(cleanSummary)
                         .publishedAt(parsePubDate(pubDate))
-                        .linkedSymbols(keyword != null ? "[\"" + keyword + "\"]" : null)
+                        .themes(classifier.classify(trimTitle, cleanSummary))
+                        .linkedSymbols(symbolMatcher.match(trimTitle, cleanSummary))
                         .build());
             }
         }
@@ -174,13 +207,29 @@ public class RssNewsCollector implements NewsSource {
         return nodes.item(0).getTextContent();
     }
 
-    /** RFC 822 pubDate → LocalDateTime. 파싱 실패 시 현재 시각. */
+    /**
+     * RFC 822 pubDate → LocalDateTime.
+     * 한국 언론사는 "KST" 같은 타임존 약어를 사용하는 경우가 있어
+     * 파싱 전 약어를 오프셋 문자열로 교체한 후 여러 패턴을 순차 시도합니다.
+     * 모든 패턴이 실패하면 수집 시각으로 폴백합니다.
+     */
     private LocalDateTime parsePubDate(String pubDate) {
         if (pubDate == null || pubDate.isBlank()) return LocalDateTime.now();
-        try {
-            return ZonedDateTime.parse(pubDate.trim(), RFC_822).toLocalDateTime();
-        } catch (Exception e) {
-            return LocalDateTime.now();
+
+        // 타임존 약어를 UTC 오프셋으로 교체 (GMT+0900 형태는 건드리지 않음)
+        String cleaned = pubDate.trim();
+        for (Map.Entry<String, String> tz : TZ_ABBR.entrySet()) {
+            // \b 단어 경계로 "GMT+0900"의 "GMT"를 건드리지 않음
+            cleaned = cleaned.replaceAll("\\b" + tz.getKey() + "\\b", tz.getValue());
         }
+
+        for (DateTimeFormatter fmt : PUBDATE_FORMATS) {
+            try {
+                return ZonedDateTime.parse(cleaned, fmt).toLocalDateTime();
+            } catch (Exception ignored) {}
+        }
+
+        log.debug("pubDate 파싱 실패: '{}' — 수집 시각 폴백", pubDate);
+        return LocalDateTime.now();
     }
 }

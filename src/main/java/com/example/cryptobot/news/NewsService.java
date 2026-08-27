@@ -3,6 +3,7 @@ package com.example.cryptobot.news;
 import com.example.cryptobot.news.dto.NewsFeedResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -33,6 +34,10 @@ public class NewsService {
     private final NewsItemRepository newsItemRepository;
     private final RssNewsCollector rssNewsCollector;
 
+    /** 뉴스 보존 기간 (일). 이 기간이 지난 news_item 레코드는 자동 삭제됩니다. */
+    @Value("${news.retention.days:90}")
+    private int retentionDays;
+
     // ─── DART 공시 수집 ──────────────────────────────────────────────────────
 
     /**
@@ -60,7 +65,7 @@ public class NewsService {
                     .title(raw.reportNm())
                     .disclosureDate(parseDate(raw.rceptDt()))
                     .url(raw.url())
-                    .linkedSymbol(null)   // 태그는 향후 별도 매칭 단계에서 업데이트
+                    .linkedSymbol(raw.stockCode())   // DART API stock_code (상장사만, 비상장이면 null)
                     .reportType(raw.reportNm())
                     .build());
             saved++;
@@ -113,7 +118,7 @@ public class NewsService {
             dartRepository.save(DartDisclosure.builder()
                     .rceptNo(raw.rceptNo()).corpCode(raw.corpCode()).corpName(raw.corpName())
                     .title(raw.reportNm()).disclosureDate(parseDate(raw.rceptDt()))
-                    .url(raw.url()).linkedSymbol(null).reportType(raw.reportNm())
+                    .url(raw.url()).linkedSymbol(raw.stockCode()).reportType(raw.reportNm())
                     .build());
             saved++;
         }
@@ -240,6 +245,20 @@ public class NewsService {
     }
 
     // ─── 내부 유틸 ────────────────────────────────────────────────────────────
+
+    // ─── 보존 정책 ────────────────────────────────────────────────────────────
+
+    /**
+     * 매일 새벽 3시 — 보존 기간(기본 90일) 초과 뉴스 자동 삭제.
+     * 설정값: news.retention.days
+     */
+    @Scheduled(cron = "0 0 3 * * *")
+    @Transactional
+    public void purgeOldNews() {
+        LocalDateTime cutoff = LocalDateTime.now().minusDays(retentionDays);
+        int deleted = newsItemRepository.deleteByPublishedAtBefore(cutoff);
+        log.info("뉴스 보존 정책 실행: {}일 초과 기사 {}건 삭제 (기준일시: {})", retentionDays, deleted, cutoff);
+    }
 
     /** URL 중복 제외 후 저장, 저장 건수 반환. */
     private int saveNewsItems(List<NewsItem> items) {

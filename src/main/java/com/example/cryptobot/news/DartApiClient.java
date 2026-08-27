@@ -81,13 +81,16 @@ public class DartApiClient {
             JsonNode list = root.path("list");
             if (list.isArray()) {
                 for (JsonNode item : list) {
+                    // stock_code: 상장 종목은 6자리, 비상장은 공백 문자열
+                    String stockCode = item.path("stock_code").asText("").trim();
                     results.add(new DartRawItem(
                             item.path("rcept_no").asText(),
                             item.path("corp_code").asText(),
                             item.path("corp_name").asText(),
                             item.path("report_nm").asText(),
                             item.path("rcept_dt").asText(),
-                            DART_VIEW_URL + item.path("rcept_no").asText()
+                            DART_VIEW_URL + item.path("rcept_no").asText(),
+                            stockCode.isEmpty() ? null : stockCode
                     ));
                 }
             }
@@ -100,6 +103,7 @@ public class DartApiClient {
 
     /**
      * DART API 응답 항목 DTO.
+     * stockCode: 상장 종목의 6자리 종목코드 (비상장이면 null).
      */
     public record DartRawItem(
             String rceptNo,
@@ -107,6 +111,7 @@ public class DartApiClient {
             String corpName,
             String reportNm,
             String rceptDt,
-            String url
+            String url,
+            String stockCode
     ) {}
 }
