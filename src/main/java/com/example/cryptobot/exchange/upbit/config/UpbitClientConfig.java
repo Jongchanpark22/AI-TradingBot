@@ -11,6 +11,7 @@ import java.time.Duration;
 public class UpbitClientConfig {
 
     @Bean
+    @org.springframework.context.annotation.Primary
     public RestTemplate upbitRestTemplate(UpbitApiProperties properties) {
         return new RestTemplateBuilder()
                 .setConnectTimeout(Duration.ofMillis(properties.getTimeoutMs()))
