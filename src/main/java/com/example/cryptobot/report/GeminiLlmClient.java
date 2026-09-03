@@ -2,6 +2,7 @@ package com.example.cryptobot.report;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -33,15 +34,29 @@ public class GeminiLlmClient implements LlmClient {
     @Value("${gemini.model:gemini-1.5-flash}")
     private String model;
 
+    /** 기동 시 Gemini API 키 로드 여부를 확인합니다. 값은 뒤 4자리만 표시합니다. */
+    @PostConstruct
+    public void logKeyStatus() {
+        String trimmed = apiKey != null ? apiKey.trim() : "";
+        if (trimmed.isBlank()) {
+            log.warn("[Gemini] API 키 미설정 — GEMINI_API_KEY 환경변수 또는 gemini.api-key 프로퍼티를 확인하세요.");
+        } else {
+            String masked = "***" + trimmed.substring(Math.max(0, trimmed.length() - 4));
+            log.info("[Gemini] API 키 로드 완료: {}", masked);
+        }
+    }
+
     @Override
     public String generate(String prompt) {
-        if (apiKey == null || apiKey.isBlank()) {
+        // 공백 포함 오입력 방지를 위해 trim() 처리
+        String trimmedKey = apiKey != null ? apiKey.trim() : "";
+        if (trimmedKey.isBlank()) {
             log.warn("Gemini API 키 미설정 (gemini.api-key) — LLM 호출 건너뜀");
             return "";
         }
 
         try {
-            String url = String.format(GEMINI_URL, model, apiKey);
+            String url = String.format(GEMINI_URL, model, trimmedKey);
 
             // 요청 바디: contents[parts[text]] + generationConfig
             Map<String, Object> body = Map.of(
