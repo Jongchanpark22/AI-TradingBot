@@ -11,6 +11,7 @@ import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.*;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
@@ -38,6 +39,7 @@ import java.util.stream.Collectors;
 public class UpbitApiClient {
 
     private final UpbitApiProperties properties;
+    @Qualifier("upbitRestTemplate")
     private final RestTemplate restTemplate;
 
     // ===== 공개 API =====

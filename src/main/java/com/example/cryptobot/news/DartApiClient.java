@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
@@ -31,6 +32,7 @@ public class DartApiClient {
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final String DART_VIEW_URL = "https://dart.fss.or.kr/dsaf001/main.do?rceptNo=";
 
+    @Qualifier("upbitRestTemplate")
     private final RestTemplate upbitRestTemplate;
     private final ObjectMapper objectMapper;
 

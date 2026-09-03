@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
@@ -44,6 +45,7 @@ public class DartFinancialClient {
     /** 연결재무제표 우선 (CFS), 없으면 개별(OFS) 사용 */
     private static final String CFS = "CFS";
 
+    @Qualifier("upbitRestTemplate")
     private final RestTemplate upbitRestTemplate;
     private final ObjectMapper objectMapper;
 

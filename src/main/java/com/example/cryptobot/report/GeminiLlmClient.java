@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Component;
@@ -25,6 +26,7 @@ public class GeminiLlmClient implements LlmClient {
     private static final String GEMINI_URL =
             "https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s";
 
+    @Qualifier("geminiRestTemplate")
     private final RestTemplate geminiRestTemplate;
     private final ObjectMapper objectMapper;
 
