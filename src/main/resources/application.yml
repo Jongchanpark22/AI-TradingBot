@@ -109,7 +109,7 @@ naver:
 # AI 기업 리포트 설정 (기능4)
 gemini:
   api-key: ${GEMINI_API_KEY:}           # Google Gemini API 키 (aistudio.google.com/app/apikey)
-  model: gemini-2.5-flash               # 무료 티어 사용 가능 모델
+  model: gemini-3.6-flash               # 무료 티어 사용 가능 모델
 
 # 뉴스 RSS 피드 설정 (기능3, 키 불필요)
 # 실제 RSS 주소는 각 언론사 RSS 페이지에서 확인 후 쉼표로 구분하여 입력
