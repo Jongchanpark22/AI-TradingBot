@@ -47,7 +47,17 @@ public class SavedReport extends BaseEntity {
     @Column(name = "business_year")
     private Integer businessYear;
 
-    /** LLM 생성 서술 텍스트 */
+    /** 생성 상태 */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false, length = 20)
+    @Builder.Default
+    private Status status = Status.GENERATING;
+
+    /** FAILED 시 원인 메시지 */
+    @Column(name = "error_message", columnDefinition = "TEXT")
+    private String errorMessage;
+
+    /** LLM 생성 서술 텍스트 (GENERATING 중에는 null) */
     @Column(name = "narrative", columnDefinition = "TEXT")
     private String narrative;
 
@@ -61,5 +71,14 @@ public class SavedReport extends BaseEntity {
 
     public enum TargetType {
         STOCK, INDEX
+    }
+
+    public enum Status {
+        /** 백그라운드 생성 중 */
+        GENERATING,
+        /** 생성 완료 */
+        DONE,
+        /** 생성 실패 (errorMessage 참고) */
+        FAILED
     }
 }

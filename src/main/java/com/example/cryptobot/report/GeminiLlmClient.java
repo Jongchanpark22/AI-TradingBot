@@ -25,7 +25,7 @@ public class GeminiLlmClient implements LlmClient {
     private static final String GEMINI_URL =
             "https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s";
 
-    private final RestTemplate upbitRestTemplate;
+    private final RestTemplate geminiRestTemplate;
     private final ObjectMapper objectMapper;
 
     @Value("${gemini.api-key:}")
@@ -73,7 +73,7 @@ public class GeminiLlmClient implements LlmClient {
             headers.setContentType(MediaType.APPLICATION_JSON);
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
 
-            ResponseEntity<String> response = upbitRestTemplate.postForEntity(url, entity, String.class);
+            ResponseEntity<String> response = geminiRestTemplate.postForEntity(url, entity, String.class);
 
             if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
                 log.warn("Gemini API 호출 실패: {}", response.getStatusCode());
