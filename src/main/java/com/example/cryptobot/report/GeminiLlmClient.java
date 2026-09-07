@@ -59,6 +59,7 @@ public class GeminiLlmClient implements LlmClient {
 
         try {
             String url = String.format(GEMINI_URL, model, trimmedKey);
+            log.info("[Gemini] HTTP 호출 시작: model={}, 프롬프트길이={}자", model, prompt.length());
 
             // 요청 바디: contents[parts[text]] + generationConfig
             Map<String, Object> body = Map.of(
@@ -67,7 +68,7 @@ public class GeminiLlmClient implements LlmClient {
                     },
                     "generationConfig", Map.of(
                             "temperature", 0.3,
-                            "maxOutputTokens", 2048
+                            "maxOutputTokens", 8192
                     )
             );
 
@@ -76,20 +77,27 @@ public class GeminiLlmClient implements LlmClient {
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
 
             ResponseEntity<String> response = geminiRestTemplate.postForEntity(url, entity, String.class);
+            log.info("[Gemini] HTTP 응답 수신: 상태코드={}", response.getStatusCode());
 
             if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
-                log.warn("Gemini API 호출 실패: {}", response.getStatusCode());
+                log.warn("[Gemini] API 호출 실패: 상태코드={}, 응답바디={}", response.getStatusCode(),
+                        response.getBody() != null ? response.getBody().substring(0, Math.min(200, response.getBody().length())) : "null");
                 return "";
             }
 
             JsonNode root = objectMapper.readTree(response.getBody());
             // candidates[0].content.parts[0].text
-            return root.path("candidates").path(0)
+            String result = root.path("candidates").path(0)
                     .path("content").path("parts").path(0)
                     .path("text").asText("");
 
+            if (result.isBlank()) {
+                log.warn("[Gemini] 응답 파싱 결과 빈 문자열 — 응답 구조 확인 필요: {}", response.getBody().substring(0, Math.min(300, response.getBody().length())));
+            }
+            return result;
+
         } catch (Exception e) {
-            log.error("Gemini API 호출 오류", e);
+            log.error("[Gemini] API 호출 오류: model={}, 원인: {}", model, e.getMessage(), e);
             return "";
         }
     }

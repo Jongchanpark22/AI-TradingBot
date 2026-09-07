@@ -166,19 +166,25 @@ public class DartFinancialClient {
             preferred = accounts;
         }
 
-        // 매출액 — IS에 있음. 금융업 등은 "영업수익"이므로 둘 다 시도
+        // 매출액 3개년 — IS에 있음. 금융업 등은 "영업수익"이므로 둘 다 시도
         long revenue = findByExact(preferred, "IS", "매출액");
         if (revenue == 0) revenue = findByExact(preferred, "IS", "영업수익");
 
         long revenuePrev = findPrevByExact(preferred, "IS", "매출액");
         if (revenuePrev == 0) revenuePrev = findPrevByExact(preferred, "IS", "영업수익");
 
-        // 영업이익 — IS에 있음
-        long operatingIncome = findByExact(preferred, "IS", "영업이익");
+        long revenuePrevPrev = findPrevPrevByExact(preferred, "IS", "매출액");
+        if (revenuePrevPrev == 0) revenuePrevPrev = findPrevPrevByExact(preferred, "IS", "영업수익");
 
-        // 당기순이익 — IS 또는 CIS에 있고, "(손실)" 변형이 있으므로 contains 매칭
-        // "법인세비용차감전순이익"과 구분하기 위해 "당기순이익"으로 시작하는 행 우선
-        long netIncome = findNetIncome(preferred);
+        // 영업이익 3개년
+        long operatingIncome         = findByExact(preferred, "IS", "영업이익");
+        long operatingIncomePrev     = findPrevByExact(preferred, "IS", "영업이익");
+        long operatingIncomePrevPrev = findPrevPrevByExact(preferred, "IS", "영업이익");
+
+        // 당기순이익 3개년 — IS/CIS 모두, "(손실)" 변형 있으므로 contains 매칭
+        long netIncome         = findNetIncome(preferred, FinancialAccount::thstrmLong);
+        long netIncomePrev     = findNetIncome(preferred, FinancialAccount::frmtrmLong);
+        long netIncomePrevPrev = findNetIncome(preferred, FinancialAccount::bfefrmtrmLong);
 
         // 재무상태표 — BS에 있음
         long totalAssets      = findByExact(preferred, BS, "자산총계");
@@ -198,8 +204,13 @@ public class DartFinancialClient {
                 .businessYear(businessYear)
                 .revenue(revenue)
                 .revenuePrev(revenuePrev)
+                .revenuePrevPrev(revenuePrevPrev)
                 .operatingIncome(operatingIncome)
+                .operatingIncomePrev(operatingIncomePrev)
+                .operatingIncomePrevPrev(operatingIncomePrevPrev)
                 .netIncome(netIncome)
+                .netIncomePrev(netIncomePrev)
+                .netIncomePrevPrev(netIncomePrevPrev)
                 .totalAssets(totalAssets)
                 .totalLiabilities(totalLiabilities)
                 .totalEquity(totalEquity)
@@ -244,24 +255,34 @@ public class DartFinancialClient {
     }
 
     /**
-     * 당기순이익을 IS/CIS 모두에서 찾습니다.
-     * DART는 기업에 따라 IS 또는 CIS에 기재하며, "당기순이익(손실)" 변형이 있습니다.
-     * "법인세비용차감전순이익"과 구분하기 위해 "당기순이익"으로 시작하는 행을 우선합니다.
+     * sjDiv·accountNm 정확 일치로 전전기 금액을 찾습니다.
      */
-    private long findNetIncome(List<FinancialAccount> accounts) {
-        // 1순위: IS에서 "당기순이익"으로 시작하는 계정
+    private long findPrevPrevByExact(List<FinancialAccount> accounts, String sjDiv, String accountNm) {
+        return accounts.stream()
+                .filter(a -> sjDiv.equals(a.sjDiv()) && accountNm.equals(a.accountNm()))
+                .mapToLong(FinancialAccount::bfefrmtrmLong)
+                .findFirst()
+                .orElse(0L);
+    }
+
+    /**
+     * 당기순이익을 IS/CIS 모두에서 찾습니다.
+     * amountExtractor로 당기/전기/전전기 중 원하는 기간을 지정합니다.
+     * DART는 기업에 따라 IS 또는 CIS에 기재하며, "(손실)" 변형이 있습니다.
+     */
+    private long findNetIncome(List<FinancialAccount> accounts,
+                               java.util.function.ToLongFunction<FinancialAccount> amountExtractor) {
         return accounts.stream()
                 .filter(a -> ("IS".equals(a.sjDiv()) || "CIS".equals(a.sjDiv()))
                         && a.accountNm() != null
                         && a.accountNm().startsWith("당기순이익"))
-                .mapToLong(FinancialAccount::thstrmLong)
+                .mapToLong(amountExtractor)
                 .findFirst()
-                // 2순위: contains 폴백 (IS 우선, CIS 후순위 순서로 stream이 정렬되어 있으면 자연스럽게 처리)
                 .orElseGet(() -> accounts.stream()
                         .filter(a -> ("IS".equals(a.sjDiv()) || "CIS".equals(a.sjDiv()))
                                 && a.accountNm() != null
                                 && a.accountNm().contains("당기순이익"))
-                        .mapToLong(FinancialAccount::thstrmLong)
+                        .mapToLong(amountExtractor)
                         .findFirst()
                         .orElse(0L));
     }

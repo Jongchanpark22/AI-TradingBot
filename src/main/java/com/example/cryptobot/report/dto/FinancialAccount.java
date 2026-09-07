@@ -33,6 +33,13 @@ public record FinancialAccount(
         return parseAmount(frmtrmAmount);
     }
 
+    /**
+     * 전전기 금액을 long으로 변환합니다. 파싱 실패 시 0 반환.
+     */
+    public long bfefrmtrmLong() {
+        return parseAmount(bfefrmtrmAmount);
+    }
+
     private static long parseAmount(String raw) {
         if (raw == null || raw.isBlank() || "-".equals(raw.trim())) return 0L;
         try {

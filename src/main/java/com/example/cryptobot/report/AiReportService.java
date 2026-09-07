@@ -52,12 +52,14 @@ public class AiReportService {
      * @param businessYear 사업연도
      */
     public ReportSubmitResponse submitReport(String corpCode, int businessYear) {
-        // 1. 이미 생성 중이면 같은 ID 반환
+        log.info("[리포트] 요청 수신: corpCode={}, year={}, 호출스레드={}", corpCode, businessYear, Thread.currentThread().getName());
+
+        // 1. 이미 생성 중이면 같은 ID 반환 (async 재호출 없음)
         Optional<SavedReport> generating = savedReportRepository
                 .findFirstByUserIdAndTargetCodeAndBusinessYearAndStatusOrderByCreatedAtDesc(
                         1L, corpCode, businessYear, SavedReport.Status.GENERATING);
         if (generating.isPresent()) {
-            log.debug("리포트 생성 중 — 기존 ID 반환: {}", generating.get().getId());
+            log.info("[리포트] 이미 생성 중인 리포트 발견 — async 재호출 없이 기존 ID 반환: reportId={}", generating.get().getId());
             return new ReportSubmitResponse(generating.get().getId(), SavedReport.Status.GENERATING.name());
         }
 
@@ -66,7 +68,7 @@ public class AiReportService {
                 .findFirstByUserIdAndTargetCodeAndBusinessYearAndStatusOrderByCreatedAtDesc(
                         1L, corpCode, businessYear, SavedReport.Status.DONE);
         if (done.isPresent()) {
-            log.debug("완료된 리포트 재사용: reportId={}", done.get().getId());
+            log.info("[리포트] 완료된 리포트 재사용 — Gemini 재호출 없음: reportId={}", done.get().getId());
             return new ReportSubmitResponse(done.get().getId(), SavedReport.Status.DONE.name());
         }
 
@@ -78,11 +80,12 @@ public class AiReportService {
                 .businessYear(businessYear)
                 .status(SavedReport.Status.GENERATING)
                 .build());
+        log.info("[리포트] GENERATING 레코드 생성: reportId={}", report.getId());
 
         // 4. 백그라운드 생성 트리거
+        log.info("[리포트] 비동기 태스크 제출: reportId={}", report.getId());
         reportAsyncTask.generate(report.getId(), corpCode, businessYear);
-
-        log.info("리포트 생성 요청 접수: reportId={}, corpCode={}, year={}", report.getId(), corpCode, businessYear);
+        log.info("[리포트] 비동기 태스크 제출 완료 — 이후 처리는 report-async 스레드에서 진행");
         return new ReportSubmitResponse(report.getId(), SavedReport.Status.GENERATING.name());
     }
 
