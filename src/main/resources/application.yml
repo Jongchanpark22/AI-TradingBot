@@ -106,6 +106,17 @@ naver:
   client-id: ${NAVER_CLIENT_ID:}        # 네이버 검색 API Client ID
   client-secret: ${NAVER_CLIENT_SECRET:} # 네이버 검색 API Client Secret
 
+# 3차 — 인증 JWT 설정
+jwt:
+  secret: ${JWT_SECRET}
+  access-token-expiry-ms: 3600000     # 1시간
+  refresh-token-expiry-days: 14       # 2주
+
+# 3차 — 무료 등급 리포트 한도
+free:
+  report-limit: 5
+  report-limit-period: MONTHLY        # 월 리셋
+
 # AI 기업 리포트 설정 (기능4)
 gemini:
   api-key: ${GEMINI_API_KEY:}           # Google Gemini API 키 (aistudio.google.com/app/apikey)
