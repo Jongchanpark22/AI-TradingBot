@@ -2,12 +2,12 @@ package com.example.cryptobot.news;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 /**
  * 뉴스 테마·종목 구독 설정 API.
- * userId는 3차 인증 연결 전까지 1L 고정.
  */
 @RestController
 @RequestMapping("/news/preferences")
@@ -20,8 +20,8 @@ public class NewsPreferenceController {
      * 내 뉴스 구독 설정 조회.
      */
     @GetMapping
-    public ResponseEntity<NewsPreference> getPreferences() {
-        return preferenceRepository.findByUserId(1L)
+    public ResponseEntity<NewsPreference> getPreferences(@AuthenticationPrincipal Long userId) {
+        return preferenceRepository.findByUserId(userId)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.ok(NewsPreference.builder().build()));
     }
@@ -32,9 +32,11 @@ public class NewsPreferenceController {
      */
     @PutMapping
     @Transactional
-    public ResponseEntity<NewsPreference> upsertPreferences(@RequestBody NewsPreference request) {
-        NewsPreference pref = preferenceRepository.findByUserId(1L)
-                .orElse(NewsPreference.builder().userId(1L).build());
+    public ResponseEntity<NewsPreference> upsertPreferences(
+            @AuthenticationPrincipal Long userId,
+            @RequestBody NewsPreference request) {
+        NewsPreference pref = preferenceRepository.findByUserId(userId)
+                .orElse(NewsPreference.builder().userId(userId).build());
         pref.setThemes(request.getThemes());
         pref.setSymbols(request.getSymbols());
         return ResponseEntity.ok(preferenceRepository.save(pref));

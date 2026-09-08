@@ -20,9 +20,14 @@ public class UserAlertService {
     private final UserAlertRepository alertRepository;
     private final ObjectMapper objectMapper;
 
-    /** 전체 알림 목록 조회 */
+    /** 전체 알림 목록 조회 (내부·스케줄러용) */
     public List<UserAlert> findAll() {
         return alertRepository.findAll();
+    }
+
+    /** 특정 회원의 알림 목록 조회 */
+    public List<UserAlert> findByUserId(Long userId) {
+        return alertRepository.findByUserIdOrderByCreatedAtDesc(userId);
     }
 
     /** 알림 단건 조회 */

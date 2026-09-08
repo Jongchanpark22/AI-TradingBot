@@ -3,6 +3,7 @@ package com.example.cryptobot.report;
 import com.example.cryptobot.report.dto.ReportSubmitResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -31,8 +32,10 @@ public class AiReportController {
      * @param corpCode DART 기업 고유번호 8자리 (예: 00126380 = 삼성전자)
      */
     @PostMapping("/company/{corpCode}")
-    public ResponseEntity<ReportSubmitResponse> submitReport(@PathVariable String corpCode) {
-        return ResponseEntity.accepted().body(aiReportService.submitReport(corpCode));
+    public ResponseEntity<ReportSubmitResponse> submitReport(
+            @AuthenticationPrincipal Long userId,
+            @PathVariable String corpCode) {
+        return ResponseEntity.accepted().body(aiReportService.submitReport(userId, corpCode));
     }
 
     /**
@@ -43,18 +46,18 @@ public class AiReportController {
      */
     @PostMapping("/company/{corpCode}/{businessYear}")
     public ResponseEntity<ReportSubmitResponse> submitReportByYear(
+            @AuthenticationPrincipal Long userId,
             @PathVariable String corpCode,
             @PathVariable int businessYear) {
-        return ResponseEntity.accepted().body(aiReportService.submitReport(corpCode, businessYear));
+        return ResponseEntity.accepted().body(aiReportService.submitReport(userId, corpCode, businessYear));
     }
 
     /**
      * 내 리포트 보관함 목록 조회 (status 포함).
-     * 3차 인증 구현 전까지 userId=1L 고정.
      */
     @GetMapping("/saved")
-    public List<SavedReport> listSaved() {
-        return aiReportService.listSavedReports();
+    public List<SavedReport> listSaved(@AuthenticationPrincipal Long userId) {
+        return aiReportService.listSavedReports(userId);
     }
 
     /**

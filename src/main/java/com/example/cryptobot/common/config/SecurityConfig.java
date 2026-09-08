@@ -17,13 +17,12 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 /**
  * Spring Security 설정.
  *
- * <p>엔드포인트 권한 맵 (3차 지시서 ★보강5 기준):
+ * <p>엔드포인트 권한 맵:
  * <ul>
- *   <li>공개: /api/auth/**, Swagger, Actuator health</li>
- *   <li>공개(선택): GET /api/news/** — 로그인 없이 뉴스 열람 허용</li>
- *   <li>인증 필요: /api/users/me/**</li>
- *   <li>관리자 전용: /admin/** — 다음 이슈에서 ROLE_ADMIN 적용 예정</li>
- *   <li>나머지: 인증 필요 (다음 이슈에서 세분화)</li>
+ *   <li>관리자 전용: /api/admin/** — ROLE_ADMIN 보유 사용자만 접근</li>
+ *   <li>공개: /api/auth/**, Swagger, Actuator, /api/health</li>
+ *   <li>공개(선택): GET /api/news/**, GET /api/market/**, GET /api/coins/** — 로그인 없이 열람 허용</li>
+ *   <li>나머지: 인증 필요 (JWT 필수)</li>
  * </ul>
  * </p>
  */
@@ -41,18 +40,22 @@ public class SecurityConfig {
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(authz -> authz
+                        // 관리자 전용
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                        // 로그아웃은 인증 필요 — /api/auth/** 보다 먼저 선언
+                        .requestMatchers("/api/auth/logout").authenticated()
                         // 공개 — 인증 불필요
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/swagger-ui.html", "/swagger-ui/**",
                                 "/v3/api-docs/**", "/v3/api-docs.yaml").permitAll()
                         .requestMatchers("/actuator/health").permitAll()
-                        // 공개(선택) — 뉴스 열람
+                        .requestMatchers("/api/health").permitAll()
+                        // 뉴스·시세·차트 데이터는 공개 열람 허용
                         .requestMatchers(HttpMethod.GET, "/api/news/**", "/news/**").permitAll()
-                        // 인증 필요
-                        .requestMatchers("/api/users/me/**").authenticated()
-                        .requestMatchers("/api/auth/logout").authenticated()
-                        // 나머지는 일단 모두 허용 (다음 이슈에서 세분화)
-                        .anyRequest().permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/market/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/coins/**").permitAll()
+                        // 나머지 전부 인증 필요
+                        .anyRequest().authenticated()
                 )
                 .httpBasic(basic -> basic.disable())
                 .formLogin(form -> form.disable())

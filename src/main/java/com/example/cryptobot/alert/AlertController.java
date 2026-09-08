@@ -2,6 +2,7 @@ package com.example.cryptobot.alert;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -19,11 +20,11 @@ public class AlertController {
     private final UserAlertService alertService;
 
     /**
-     * 알림 전체 목록 조회.
+     * 내 알림 목록 조회.
      */
     @GetMapping
-    public List<UserAlert> getAll() {
-        return alertService.findAll();
+    public List<UserAlert> getAll(@AuthenticationPrincipal Long userId) {
+        return alertService.findByUserId(userId);
     }
 
     /**
@@ -39,7 +40,10 @@ public class AlertController {
      * body 예: {"symbol":"KRW-BTC","name":"BTC RSI 과매도","conditionJson":"{\"indicator\":\"RSI\",\"op\":\"<\",\"value\":30}","cooldownMinutes":60}
      */
     @PostMapping
-    public ResponseEntity<UserAlert> create(@RequestBody UserAlert request) {
+    public ResponseEntity<UserAlert> create(
+            @AuthenticationPrincipal Long userId,
+            @RequestBody UserAlert request) {
+        request.setUserId(userId);
         return ResponseEntity.ok(alertService.create(request));
     }
 
