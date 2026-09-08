@@ -7,6 +7,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -35,9 +36,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         if (StringUtils.hasText(token) && jwtProvider.validate(token)) {
             Long userId = jwtProvider.getUserId(token);
+            // role 클레임이 없는 구 토큰 호환을 위해 null → USER 기본값
+            String role = jwtProvider.getRole(token);
+            String authority = (role != null) ? "ROLE_" + role : "ROLE_USER";
             // principal 에 userId 를 Long 으로 저장 — 컨트롤러에서 @AuthenticationPrincipal Long userId 로 수신
             UsernamePasswordAuthenticationToken authentication =
-                    new UsernamePasswordAuthenticationToken(userId, null, List.of());
+                    new UsernamePasswordAuthenticationToken(userId, null,
+                            List.of(new SimpleGrantedAuthority(authority)));
             SecurityContextHolder.getContext().setAuthentication(authentication);
         }
 

@@ -99,7 +99,7 @@ public class SocialAuthService {
     }
 
     private AuthResponse issueTokens(User user) {
-        String accessToken = jwtProvider.createAccessToken(user.getId());
+        String accessToken = jwtProvider.createAccessToken(user.getId(), user.getRole().name());
         String refreshValue = jwtProvider.generateRefreshTokenValue();
         refreshTokenRepository.save(RefreshToken.builder()
                 .userId(user.getId())

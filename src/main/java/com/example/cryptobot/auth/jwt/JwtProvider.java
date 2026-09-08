@@ -23,6 +23,7 @@ import java.util.UUID;
 public class JwtProvider {
 
     private static final String CLAIM_USER_ID = "uid";
+    private static final String CLAIM_ROLE = "role";
 
     @Value("${jwt.secret}")
     private String secret;
@@ -42,12 +43,14 @@ public class JwtProvider {
      * 액세스 토큰을 발급합니다.
      *
      * @param userId 서비스 회원 ID
+     * @param role   회원 권한 (예: "USER", "ADMIN")
      * @return 서명된 JWT 문자열
      */
-    public String createAccessToken(Long userId) {
+    public String createAccessToken(Long userId, String role) {
         Date now = new Date();
         return Jwts.builder()
                 .claim(CLAIM_USER_ID, userId)
+                .claim(CLAIM_ROLE, role)
                 .issuedAt(now)
                 .expiration(new Date(now.getTime() + accessTokenExpiryMs))
                 .signWith(signingKey)
@@ -73,6 +76,16 @@ public class JwtProvider {
      */
     public Long getUserId(String token) {
         return parseClaims(token).get(CLAIM_USER_ID, Long.class);
+    }
+
+    /**
+     * 액세스 토큰에서 role 을 추출합니다. 클레임이 없으면 null 반환.
+     *
+     * @param token Bearer 토큰 (Bearer 접두사 제외)
+     * @return role 문자열 (예: "USER", "ADMIN") 또는 null
+     */
+    public String getRole(String token) {
+        return parseClaims(token).get(CLAIM_ROLE, String.class);
     }
 
     /**

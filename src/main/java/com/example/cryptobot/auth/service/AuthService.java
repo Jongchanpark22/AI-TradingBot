@@ -128,7 +128,7 @@ public class AuthService {
 
     /** 액세스 + 리프레시 토큰을 발급하고 AuthResponse 를 반환합니다. */
     private AuthResponse issueTokens(User user) {
-        String accessToken = jwtProvider.createAccessToken(user.getId());
+        String accessToken = jwtProvider.createAccessToken(user.getId(), user.getRole().name());
 
         String refreshValue = jwtProvider.generateRefreshTokenValue();
         refreshTokenRepository.save(RefreshToken.builder()

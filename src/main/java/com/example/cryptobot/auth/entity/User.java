@@ -51,6 +51,12 @@ public class User extends BaseEntity {
     @Builder.Default
     private Status status = Status.ACTIVE;
 
+    /** 권한 등급 — USER: 일반, ADMIN: 관리자 */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 10)
+    @Builder.Default
+    private Role role = Role.USER;
+
     /** 온보딩 완료 시각 — null 이면 미완료 */
     @Column(name = "onboarded_at")
     private LocalDateTime onboardedAt;
@@ -77,5 +83,9 @@ public class User extends BaseEntity {
         ACTIVE,
         /** 탈퇴 처리(소프트 삭제) */
         WITHDRAWN
+    }
+
+    public enum Role {
+        USER, ADMIN
     }
 }
