@@ -26,6 +26,17 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(response);
     }
 
+    /** FREE 티어 월 리포트 한도 초과 → 429 Too Many Requests */
+    @ExceptionHandler(ReportLimitExceededException.class)
+    public ResponseEntity<ErrorResponse> handleReportLimit(ReportLimitExceededException e) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .body(ErrorResponse.builder()
+                        .errorCode("REPORT_LIMIT_EXCEEDED")
+                        .errorMessage(e.getMessage())
+                        .status(HttpStatus.TOO_MANY_REQUESTS.value())
+                        .build());
+    }
+
     /** 이메일 중복 등 도메인 검증 실패 */
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ErrorResponse> handleIllegalArgument(IllegalArgumentException e) {
