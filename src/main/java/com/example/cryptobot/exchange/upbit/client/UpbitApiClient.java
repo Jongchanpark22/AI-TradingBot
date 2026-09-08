@@ -193,6 +193,36 @@ public class UpbitApiClient {
         }
     }
 
+    /**
+     * 전체 KRW 마켓 목록을 DTO로 조회 (한국어명·영문명 포함).
+     * 검색용으로 사용합니다.
+     */
+    public List<UpbitMarketDto> getAllKrwMarketDtos() {
+        try {
+            String url = UriComponentsBuilder
+                    .fromHttpUrl(properties.getBaseUrl() + "/v1/market/all")
+                    .queryParam("isDetails", false)
+                    .toUriString();
+
+            ResponseEntity<UpbitMarketDto[]> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.GET,
+                    null,
+                    UpbitMarketDto[].class
+            );
+
+            UpbitMarketDto[] body = response.getBody();
+            if (body == null) return List.of();
+
+            return Arrays.stream(body)
+                    .filter(m -> m.getMarket() != null && m.getMarket().startsWith("KRW-"))
+                    .toList();
+        } catch (Exception e) {
+            log.error("마켓 DTO 목록 조회 실패", e);
+            return List.of();
+        }
+    }
+
     // ===== 인증 필요 API =====
 
     /**

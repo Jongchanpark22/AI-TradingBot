@@ -104,6 +104,74 @@ public class DartApiClient {
     }
 
     /**
+     * 기업명으로 공시 목록을 검색하여 고유 기업 목록을 반환합니다.
+     * DART에 직접적인 기업명 검색 API가 없으므로, list.json의 corp_name 필터를 활용합니다.
+     *
+     * @param corpName 검색할 기업명 (부분 일치)
+     * @return 검색된 공시의 기업 목록 (중복 제거, 최대 20개)
+     */
+    public List<DartRawItem> searchByCorpName(String corpName) {
+        List<DartRawItem> results = new ArrayList<>();
+
+        if (apiKey == null || apiKey.isBlank()) {
+            log.warn("DART API 키 미설정 (dart.api-key) — 기업 검색 건너뜀");
+            return results;
+        }
+
+        try {
+            // 최근 1년치 공시에서 corp_name으로 필터 — 페이지당 20건
+            String today = java.time.LocalDate.now().format(DATE_FMT);
+            String oneYearAgo = java.time.LocalDate.now().minusYears(1).format(DATE_FMT);
+
+            URI uri = UriComponentsBuilder.fromHttpUrl(DART_LIST_URL)
+                    .queryParam("crtfc_key", apiKey)
+                    .queryParam("corp_name", corpName)
+                    .queryParam("bgn_de", oneYearAgo)
+                    .queryParam("end_de", today)
+                    .queryParam("page_count", 20)
+                    .queryParam("sort", "date")
+                    .queryParam("sort_mth", "desc")
+                    .build(true)
+                    .toUri();
+
+            ResponseEntity<String> response = upbitRestTemplate.getForEntity(uri, String.class);
+            if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
+                return results;
+            }
+
+            JsonNode root = objectMapper.readTree(response.getBody());
+            if (!"000".equals(root.path("status").asText())) {
+                return results;
+            }
+
+            // corp_code 기준 중복 제거
+            java.util.Set<String> seen = new java.util.LinkedHashSet<>();
+            JsonNode list = root.path("list");
+            if (list.isArray()) {
+                for (JsonNode item : list) {
+                    String corpCode = item.path("corp_code").asText();
+                    if (seen.add(corpCode)) {
+                        String stockCode = item.path("stock_code").asText("").trim();
+                        results.add(new DartRawItem(
+                                item.path("rcept_no").asText(),
+                                corpCode,
+                                item.path("corp_name").asText(),
+                                item.path("report_nm").asText(),
+                                item.path("rcept_dt").asText(),
+                                DART_VIEW_URL + item.path("rcept_no").asText(),
+                                stockCode.isEmpty() ? null : stockCode
+                        ));
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.error("DART 기업명 검색 오류: corpName={}", corpName, e);
+        }
+
+        return results;
+    }
+
+    /**
      * DART API 응답 항목 DTO.
      * stockCode: 상장 종목의 6자리 종목코드 (비상장이면 null).
      */
