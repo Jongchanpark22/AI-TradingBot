@@ -30,9 +30,15 @@ public class UserAlertService {
         return alertRepository.findByUserIdOrderByCreatedAtDesc(userId);
     }
 
-    /** 알림 단건 조회 */
+    /** 알림 단건 조회 (내부·스케줄러용 — userId 검증 없음) */
     public UserAlert findById(Long id) {
         return alertRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("알림을 찾을 수 없습니다: " + id));
+    }
+
+    /** 알림 단건 조회 — 소유권 검증 포함 */
+    public UserAlert findByIdAndUserId(Long id, Long userId) {
+        return alertRepository.findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new IllegalArgumentException("알림을 찾을 수 없습니다: " + id));
     }
 
@@ -43,10 +49,10 @@ public class UserAlertService {
         return alertRepository.save(alert);
     }
 
-    /** 알림 수정 */
+    /** 알림 수정 — 소유권 검증 포함 */
     @Transactional
-    public UserAlert update(Long id, UserAlert request) {
-        UserAlert alert = findById(id);
+    public UserAlert update(Long userId, Long id, UserAlert request) {
+        UserAlert alert = findByIdAndUserId(id, userId);
         if (request.getSymbol() != null) alert.setSymbol(request.getSymbol());
         if (request.getName() != null) alert.setName(request.getName());
         if (request.getConditionJson() != null) {
@@ -58,10 +64,11 @@ public class UserAlertService {
         return alertRepository.save(alert);
     }
 
-    /** 알림 삭제 */
+    /** 알림 삭제 — 소유권 검증 포함 */
     @Transactional
-    public void delete(Long id) {
-        alertRepository.deleteById(id);
+    public void delete(Long userId, Long id) {
+        UserAlert alert = findByIdAndUserId(id, userId);
+        alertRepository.delete(alert);
     }
 
     /** conditionJson 파싱 유효성 검사 */

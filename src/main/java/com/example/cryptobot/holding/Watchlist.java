@@ -10,6 +10,7 @@ import lombok.*;
  */
 @Entity
 @Table(name = "watchlist", indexes = {
+        @Index(name = "idx_wl_user_id", columnList = "user_id"),
         @Index(name = "idx_wl_symbol", columnList = "symbol")
 })
 @Getter
@@ -22,6 +23,10 @@ public class Watchlist extends BaseEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    /** 소유자 ID */
+    @Column(name = "user_id", nullable = false)
+    private Long userId;
 
     /** 마켓 코드 (예: KRW-BTC) */
     @Column(nullable = false, length = 20)

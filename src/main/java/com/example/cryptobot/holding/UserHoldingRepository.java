@@ -8,7 +8,9 @@ import java.util.List;
 @Repository
 public interface UserHoldingRepository extends JpaRepository<UserHolding, Long> {
 
-    List<UserHolding> findAllByOrderByCreatedAtDesc();
+    List<UserHolding> findByUserIdOrderByCreatedAtDesc(Long userId);
 
-    boolean existsBySymbol(String symbol);
+    java.util.Optional<UserHolding> findByIdAndUserId(Long id, Long userId);
+
+    boolean existsByUserIdAndSymbol(Long userId, String symbol);
 }

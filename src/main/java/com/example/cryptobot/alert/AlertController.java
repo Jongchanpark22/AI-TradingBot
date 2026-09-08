@@ -31,8 +31,10 @@ public class AlertController {
      * 알림 단건 조회.
      */
     @GetMapping("/{id}")
-    public UserAlert getById(@PathVariable Long id) {
-        return alertService.findById(id);
+    public UserAlert getById(
+            @AuthenticationPrincipal Long userId,
+            @PathVariable Long id) {
+        return alertService.findByIdAndUserId(id, userId);
     }
 
     /**
@@ -51,16 +53,21 @@ public class AlertController {
      * 알림 수정.
      */
     @PutMapping("/{id}")
-    public ResponseEntity<UserAlert> update(@PathVariable Long id, @RequestBody UserAlert request) {
-        return ResponseEntity.ok(alertService.update(id, request));
+    public ResponseEntity<UserAlert> update(
+            @AuthenticationPrincipal Long userId,
+            @PathVariable Long id,
+            @RequestBody UserAlert request) {
+        return ResponseEntity.ok(alertService.update(userId, id, request));
     }
 
     /**
      * 알림 삭제.
      */
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
-        alertService.delete(id);
+    public ResponseEntity<Void> delete(
+            @AuthenticationPrincipal Long userId,
+            @PathVariable Long id) {
+        alertService.delete(userId, id);
         return ResponseEntity.noContent().build();
     }
 }

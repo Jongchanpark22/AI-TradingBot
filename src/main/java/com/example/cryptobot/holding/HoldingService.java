@@ -18,6 +18,7 @@ import java.util.List;
 /**
  * 보유 종목·관심 종목 관리 서비스.
  * 현재가는 Ticker 캐시에서 조회하며, 과거 통계는 trade_history 재활용합니다.
+ * 모든 조회·수정·삭제는 userId 소유권을 검증합니다.
  */
 @Slf4j
 @Service
@@ -32,10 +33,12 @@ public class HoldingService {
     // ─── 보유 종목 CRUD ─────────────────────────────────────────────────────────
 
     /**
-     * 보유 종목 전체 조회 (현재가 + 미실현 손익 포함).
+     * 내 보유 종목 전체 조회 (현재가 + 미실현 손익 포함).
+     *
+     * @param userId 요청 회원 ID
      */
-    public List<HoldingResponse> findAllHoldings() {
-        return holdingRepository.findAllByOrderByCreatedAtDesc().stream()
+    public List<HoldingResponse> findAllHoldings(Long userId) {
+        return holdingRepository.findByUserIdOrderByCreatedAtDesc(userId).stream()
                 .map(h -> {
                     BigDecimal price = fetchCurrentPrice(h.getSymbol());
                     return HoldingResponse.from(h, price);
@@ -44,20 +47,27 @@ public class HoldingService {
     }
 
     /**
-     * 보유 종목 단건 조회.
+     * 내 보유 종목 단건 조회.
+     *
+     * @param userId 요청 회원 ID
+     * @param id     보유 종목 ID
      */
-    public HoldingResponse findHoldingById(Long id) {
-        UserHolding holding = holdingRepository.findById(id)
+    public HoldingResponse findHoldingById(Long userId, Long id) {
+        UserHolding holding = holdingRepository.findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new IllegalArgumentException("보유 종목을 찾을 수 없습니다: " + id));
         return HoldingResponse.from(holding, fetchCurrentPrice(holding.getSymbol()));
     }
 
     /**
      * 보유 종목 추가.
+     *
+     * @param userId  소유자 ID
+     * @param request 종목 정보
      */
     @Transactional
-    public HoldingResponse createHolding(HoldingRequest request) {
+    public HoldingResponse createHolding(Long userId, HoldingRequest request) {
         UserHolding holding = UserHolding.builder()
+                .userId(userId)
                 .symbol(request.getSymbol())
                 .avgBuyPrice(request.getAvgBuyPrice())
                 .quantity(request.getQuantity())
@@ -69,10 +79,14 @@ public class HoldingService {
 
     /**
      * 보유 종목 수정 (평균 매수가, 수량, 메모).
+     *
+     * @param userId  요청 회원 ID (소유권 검증)
+     * @param id      보유 종목 ID
+     * @param request 수정할 필드
      */
     @Transactional
-    public HoldingResponse updateHolding(Long id, HoldingRequest request) {
-        UserHolding holding = holdingRepository.findById(id)
+    public HoldingResponse updateHolding(Long userId, Long id, HoldingRequest request) {
+        UserHolding holding = holdingRepository.findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new IllegalArgumentException("보유 종목을 찾을 수 없습니다: " + id));
 
         if (request.getAvgBuyPrice() != null) holding.setAvgBuyPrice(request.getAvgBuyPrice());
@@ -85,13 +99,15 @@ public class HoldingService {
 
     /**
      * 보유 종목 삭제.
+     *
+     * @param userId 요청 회원 ID (소유권 검증)
+     * @param id     보유 종목 ID
      */
     @Transactional
-    public void deleteHolding(Long id) {
-        if (!holdingRepository.existsById(id)) {
-            throw new IllegalArgumentException("보유 종목을 찾을 수 없습니다: " + id);
-        }
-        holdingRepository.deleteById(id);
+    public void deleteHolding(Long userId, Long id) {
+        UserHolding holding = holdingRepository.findByIdAndUserId(id, userId)
+                .orElseThrow(() -> new IllegalArgumentException("보유 종목을 찾을 수 없습니다: " + id));
+        holdingRepository.delete(holding);
     }
 
     // ─── 과거 통계 ────────────────────────────────────────────────────────────
@@ -100,11 +116,12 @@ public class HoldingService {
      * 해당 심볼의 과거 거래 통계 반환.
      * trade_history 재활용 — 결과는 참고용이며 투자 권유가 아닙니다.
      *
-     * @param id 보유 종목 ID
+     * @param userId 요청 회원 ID (소유권 검증)
+     * @param id     보유 종목 ID
      * @return 과거 통계 (표본 수, 수익 건수, 손익률 분포)
      */
-    public HoldingStatsResponse getStats(Long id) {
-        UserHolding holding = holdingRepository.findById(id)
+    public HoldingStatsResponse getStats(Long userId, Long id) {
+        UserHolding holding = holdingRepository.findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new IllegalArgumentException("보유 종목을 찾을 수 없습니다: " + id));
 
         Object[] row = tradeHistoryRepository.symbolStats(holding.getSymbol());
@@ -135,18 +152,24 @@ public class HoldingService {
     // ─── 관심 종목 CRUD ──────────────────────────────────────────────────────────
 
     /**
-     * 관심 종목 전체 조회.
+     * 내 관심 종목 전체 조회.
+     *
+     * @param userId 요청 회원 ID
      */
-    public List<Watchlist> findAllWatchlist() {
-        return watchlistRepository.findAllByOrderByCreatedAtDesc();
+    public List<Watchlist> findAllWatchlist(Long userId) {
+        return watchlistRepository.findByUserIdOrderByCreatedAtDesc(userId);
     }
 
     /**
      * 관심 종목 추가.
+     *
+     * @param userId  소유자 ID
+     * @param request 종목 정보
      */
     @Transactional
-    public Watchlist addWatchlist(WatchlistRequest request) {
+    public Watchlist addWatchlist(Long userId, WatchlistRequest request) {
         Watchlist item = Watchlist.builder()
+                .userId(userId)
                 .symbol(request.getSymbol())
                 .memo(request.getMemo())
                 .build();
@@ -155,13 +178,15 @@ public class HoldingService {
 
     /**
      * 관심 종목 삭제.
+     *
+     * @param userId 요청 회원 ID (소유권 검증)
+     * @param id     관심 종목 ID
      */
     @Transactional
-    public void deleteWatchlist(Long id) {
-        if (!watchlistRepository.existsById(id)) {
-            throw new IllegalArgumentException("관심 종목을 찾을 수 없습니다: " + id);
-        }
-        watchlistRepository.deleteById(id);
+    public void deleteWatchlist(Long userId, Long id) {
+        Watchlist item = watchlistRepository.findByIdAndUserId(id, userId)
+                .orElseThrow(() -> new IllegalArgumentException("관심 종목을 찾을 수 없습니다: " + id));
+        watchlistRepository.delete(item);
     }
 
     // ─── 내부 유틸 ────────────────────────────────────────────────────────────
