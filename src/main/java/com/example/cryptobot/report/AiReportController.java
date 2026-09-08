@@ -69,11 +69,14 @@ public class AiReportController {
      *   <li>status=FAILED     → errorMessage 확인</li>
      * </ul>
      *
-     * @param id 저장된 리포트 ID
+     * @param userId 요청 회원 ID (소유권 검증)
+     * @param id     저장된 리포트 ID
      */
     @GetMapping("/saved/{id}")
-    public ResponseEntity<SavedReport> getSaved(@PathVariable Long id) {
-        return aiReportService.getSavedReport(id)
+    public ResponseEntity<SavedReport> getSaved(
+            @AuthenticationPrincipal Long userId,
+            @PathVariable Long id) {
+        return aiReportService.getSavedReport(userId, id)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }

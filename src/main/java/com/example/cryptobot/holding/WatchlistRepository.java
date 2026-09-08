@@ -8,7 +8,7 @@ import java.util.List;
 @Repository
 public interface WatchlistRepository extends JpaRepository<Watchlist, Long> {
 
-    List<Watchlist> findAllByOrderByCreatedAtDesc();
+    List<Watchlist> findByUserIdOrderByCreatedAtDesc(Long userId);
 
-    boolean existsBySymbol(String symbol);
+    java.util.Optional<Watchlist> findByIdAndUserId(Long id, Long userId);
 }

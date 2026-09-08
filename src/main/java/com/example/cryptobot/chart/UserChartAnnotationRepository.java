@@ -9,4 +9,6 @@ import java.util.List;
 public interface UserChartAnnotationRepository extends JpaRepository<UserChartAnnotation, Long> {
 
     List<UserChartAnnotation> findByUserIdAndSymbolOrderByCreatedAtDesc(Long userId, String symbol);
+
+    java.util.Optional<UserChartAnnotation> findByIdAndUserId(Long id, Long userId);
 }

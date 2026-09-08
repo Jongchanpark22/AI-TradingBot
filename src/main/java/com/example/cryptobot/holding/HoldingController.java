@@ -6,6 +6,7 @@ import com.example.cryptobot.holding.dto.HoldingStatsResponse;
 import com.example.cryptobot.holding.dto.WatchlistRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -27,16 +28,18 @@ public class HoldingController {
      * 보유 종목 전체 조회 (현재가 + 미실현 손익 포함).
      */
     @GetMapping("/holdings")
-    public List<HoldingResponse> getAllHoldings() {
-        return holdingService.findAllHoldings();
+    public List<HoldingResponse> getAllHoldings(@AuthenticationPrincipal Long userId) {
+        return holdingService.findAllHoldings(userId);
     }
 
     /**
      * 보유 종목 단건 조회.
      */
     @GetMapping("/holdings/{id}")
-    public HoldingResponse getHolding(@PathVariable Long id) {
-        return holdingService.findHoldingById(id);
+    public HoldingResponse getHolding(
+            @AuthenticationPrincipal Long userId,
+            @PathVariable Long id) {
+        return holdingService.findHoldingById(userId, id);
     }
 
     /**
@@ -44,16 +47,21 @@ public class HoldingController {
      */
     @PostMapping("/holdings")
     @ResponseStatus(HttpStatus.CREATED)
-    public HoldingResponse createHolding(@RequestBody HoldingRequest request) {
-        return holdingService.createHolding(request);
+    public HoldingResponse createHolding(
+            @AuthenticationPrincipal Long userId,
+            @RequestBody HoldingRequest request) {
+        return holdingService.createHolding(userId, request);
     }
 
     /**
      * 보유 종목 수정 (평균매수가·수량·메모).
      */
     @PutMapping("/holdings/{id}")
-    public HoldingResponse updateHolding(@PathVariable Long id, @RequestBody HoldingRequest request) {
-        return holdingService.updateHolding(id, request);
+    public HoldingResponse updateHolding(
+            @AuthenticationPrincipal Long userId,
+            @PathVariable Long id,
+            @RequestBody HoldingRequest request) {
+        return holdingService.updateHolding(userId, id, request);
     }
 
     /**
@@ -61,8 +69,10 @@ public class HoldingController {
      */
     @DeleteMapping("/holdings/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void deleteHolding(@PathVariable Long id) {
-        holdingService.deleteHolding(id);
+    public void deleteHolding(
+            @AuthenticationPrincipal Long userId,
+            @PathVariable Long id) {
+        holdingService.deleteHolding(userId, id);
     }
 
     /**
@@ -70,8 +80,10 @@ public class HoldingController {
      * ⚠️ 참고용 수치, 투자 권유 아님, 표본이 적으면 신뢰도 낮음.
      */
     @GetMapping("/holdings/{id}/stats")
-    public HoldingStatsResponse getStats(@PathVariable Long id) {
-        return holdingService.getStats(id);
+    public HoldingStatsResponse getStats(
+            @AuthenticationPrincipal Long userId,
+            @PathVariable Long id) {
+        return holdingService.getStats(userId, id);
     }
 
     // ─── 관심 종목 ────────────────────────────────────────────────────────────
@@ -80,8 +92,8 @@ public class HoldingController {
      * 관심 종목 전체 조회.
      */
     @GetMapping("/watchlist")
-    public List<Watchlist> getWatchlist() {
-        return holdingService.findAllWatchlist();
+    public List<Watchlist> getWatchlist(@AuthenticationPrincipal Long userId) {
+        return holdingService.findAllWatchlist(userId);
     }
 
     /**
@@ -89,8 +101,10 @@ public class HoldingController {
      */
     @PostMapping("/watchlist")
     @ResponseStatus(HttpStatus.CREATED)
-    public Watchlist addWatchlist(@RequestBody WatchlistRequest request) {
-        return holdingService.addWatchlist(request);
+    public Watchlist addWatchlist(
+            @AuthenticationPrincipal Long userId,
+            @RequestBody WatchlistRequest request) {
+        return holdingService.addWatchlist(userId, request);
     }
 
     /**
@@ -98,7 +112,9 @@ public class HoldingController {
      */
     @DeleteMapping("/watchlist/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void deleteWatchlist(@PathVariable Long id) {
-        holdingService.deleteWatchlist(id);
+    public void deleteWatchlist(
+            @AuthenticationPrincipal Long userId,
+            @PathVariable Long id) {
+        holdingService.deleteWatchlist(userId, id);
     }
 }

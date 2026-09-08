@@ -12,6 +12,7 @@ import java.math.BigDecimal;
  */
 @Entity
 @Table(name = "user_holding", indexes = {
+        @Index(name = "idx_uh_user_id", columnList = "user_id"),
         @Index(name = "idx_uh_symbol", columnList = "symbol")
 })
 @Getter
@@ -24,6 +25,10 @@ public class UserHolding extends BaseEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    /** 보유자 ID */
+    @Column(name = "user_id", nullable = false)
+    private Long userId;
 
     /** 마켓 코드 (예: KRW-BTC) */
     @Column(nullable = false, length = 20)

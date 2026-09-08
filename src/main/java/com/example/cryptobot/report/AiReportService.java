@@ -119,11 +119,14 @@ public class AiReportService {
     }
 
     /**
-     * 보관함 단건 조회 (폴링용).
+     * 보관함 단건 조회 (폴링용) — 소유권 검증 포함.
      * GENERATING → narrative null | DONE → 전체 | FAILED → errorMessage
+     *
+     * @param userId 요청 회원 ID (소유권 검증)
+     * @param id     리포트 ID
      */
-    public Optional<SavedReport> getSavedReport(Long id) {
-        return savedReportRepository.findById(id);
+    public Optional<SavedReport> getSavedReport(Long userId, Long id) {
+        return savedReportRepository.findByIdAndUserId(id, userId);
     }
 
     // ─── 내부 헬퍼 ────────────────────────────────────────────────────────────

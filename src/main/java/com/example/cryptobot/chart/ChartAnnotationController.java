@@ -54,9 +54,14 @@ public class ChartAnnotationController {
     @DeleteMapping("/{symbol}/annotations/{id}")
     @Transactional
     public ResponseEntity<Void> deleteAnnotation(
+            @AuthenticationPrincipal Long userId,
             @PathVariable String symbol,
             @PathVariable Long id) {
-        annotationRepository.deleteById(id);
+        annotationRepository.findByIdAndUserId(id, userId)
+                .ifPresentOrElse(
+                        annotationRepository::delete,
+                        () -> { throw new IllegalArgumentException("주석을 찾을 수 없습니다: " + id); }
+                );
         return ResponseEntity.noContent().build();
     }
 
@@ -95,9 +100,14 @@ public class ChartAnnotationController {
     @DeleteMapping("/{symbol}/indicators/settings/{id}")
     @Transactional
     public ResponseEntity<Void> deleteIndicatorSetting(
+            @AuthenticationPrincipal Long userId,
             @PathVariable String symbol,
             @PathVariable Long id) {
-        indicatorRepository.deleteById(id);
+        indicatorRepository.findByIdAndUserId(id, userId)
+                .ifPresentOrElse(
+                        indicatorRepository::delete,
+                        () -> { throw new IllegalArgumentException("지표 설정을 찾을 수 없습니다: " + id); }
+                );
         return ResponseEntity.noContent().build();
     }
 }

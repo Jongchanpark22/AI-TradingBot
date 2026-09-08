@@ -9,4 +9,6 @@ import java.util.List;
 public interface UserIndicatorSettingRepository extends JpaRepository<UserIndicatorSetting, Long> {
 
     List<UserIndicatorSetting> findByUserIdAndSymbolOrderByCreatedAtDesc(Long userId, String symbol);
+
+    java.util.Optional<UserIndicatorSetting> findByIdAndUserId(Long id, Long userId);
 }
