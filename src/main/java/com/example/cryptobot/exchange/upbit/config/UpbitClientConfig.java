@@ -27,7 +27,7 @@ public class UpbitClientConfig {
     public RestTemplate geminiRestTemplate() {
         return new RestTemplateBuilder()
                 .setConnectTimeout(Duration.ofSeconds(10))
-                .setReadTimeout(Duration.ofSeconds(60))
+                .setReadTimeout(Duration.ofSeconds(120))
                 .build();
     }
 }

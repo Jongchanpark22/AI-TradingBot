@@ -24,17 +24,32 @@ public class CompanyFinancials {
     private int businessYear;
 
     // ── 손익계산서 ──────────────────────────────────────────────
-    /** 매출액 (원) */
+    /** 매출액 당기 (원) */
     private long revenue;
 
-    /** 전기 매출액 (원) */
+    /** 매출액 전기 (원) */
     private long revenuePrev;
 
-    /** 영업이익 (원) */
+    /** 매출액 전전기 (원) */
+    private long revenuePrevPrev;
+
+    /** 영업이익 당기 (원) */
     private long operatingIncome;
 
-    /** 당기순이익 (원) */
+    /** 영업이익 전기 (원) */
+    private long operatingIncomePrev;
+
+    /** 영업이익 전전기 (원) */
+    private long operatingIncomePrevPrev;
+
+    /** 당기순이익 당기 (원) */
     private long netIncome;
+
+    /** 당기순이익 전기 (원) */
+    private long netIncomePrev;
+
+    /** 당기순이익 전전기 (원) */
+    private long netIncomePrevPrev;
 
     // ── 재무상태표 ──────────────────────────────────────────────
     /** 자산총계 (원) */
@@ -66,35 +81,65 @@ public class CompanyFinancials {
     private List<FinancialAccount> rawAccounts;
 
     /**
-     * 프롬프트에 포함할 재무 요약 텍스트를 반환합니다.
+     * 프롬프트에 포함할 3개년 재무 요약 텍스트를 반환합니다.
+     * 당기/전기/전전기를 모두 포함하여 LLM이 추세를 서술할 수 있도록 합니다.
      */
     public String toPromptContext() {
+        int yr = businessYear;
         return String.format("""
-                [%s (%s) %d사업연도 재무 요약]
-                매출액: %,d원
-                전기 매출액: %,d원  (전년 대비 증감률: %s)
-                영업이익: %,d원  (영업이익률: %s)
-                당기순이익: %,d원  (순이익률: %s)
-                자산총계: %,d원
-                부채총계: %,d원
-                자본총계: %,d원
-                부채비율: %s
-                ROE: %s
+                [%s (%s) 3개년 재무 현황]
+
+                ▶ 매출액
+                  %d년(당기)   : %s원
+                  %d년(전기)   : %s원
+                  %d년(전전기) : %s원
+                  당기 전년 대비 증감률: %s
+
+                ▶ 영업이익
+                  %d년(당기)   : %s원  (영업이익률: %s)
+                  %d년(전기)   : %s원  (영업이익률: %s)
+                  %d년(전전기) : %s원  (영업이익률: %s)
+
+                ▶ 당기순이익
+                  %d년(당기)   : %s원  (순이익률: %s)
+                  %d년(전기)   : %s원  (순이익률: %s)
+                  %d년(전전기) : %s원  (순이익률: %s)
+
+                ▶ 재무상태표 (당기 %d년)
+                  자산총계: %s원
+                  부채총계: %s원
+                  자본총계: %s원
+                  부채비율: %s  /  ROE: %s
                 """,
-                corpName, corpCode, businessYear,
-                revenue,
-                revenuePrev, fmtRate(revenueGrowth),
-                operatingIncome, fmtRate(operatingMargin),
-                netIncome, fmtRate(netMargin),
-                totalAssets,
-                totalLiabilities,
-                totalEquity,
-                fmtRate(debtRatio),
-                fmtRate(roe)
+                corpName, corpCode,
+                yr,   fmtAmt(revenue),
+                yr-1, fmtAmt(revenuePrev),
+                yr-2, fmtAmt(revenuePrevPrev),
+                fmtRate(revenueGrowth),
+                yr,   fmtAmt(operatingIncome),   fmtRate(calcRate(operatingIncome, revenue)),
+                yr-1, fmtAmt(operatingIncomePrev), fmtRate(calcRate(operatingIncomePrev, revenuePrev)),
+                yr-2, fmtAmt(operatingIncomePrevPrev), fmtRate(calcRate(operatingIncomePrevPrev, revenuePrevPrev)),
+                yr,   fmtAmt(netIncome),   fmtRate(calcRate(netIncome, revenue)),
+                yr-1, fmtAmt(netIncomePrev), fmtRate(calcRate(netIncomePrev, revenuePrev)),
+                yr-2, fmtAmt(netIncomePrevPrev), fmtRate(calcRate(netIncomePrevPrev, revenuePrevPrev)),
+                yr,
+                fmtAmt(totalAssets),
+                fmtAmt(totalLiabilities),
+                fmtAmt(totalEquity),
+                fmtRate(debtRatio), fmtRate(roe)
         );
+    }
+
+    private static String fmtAmt(long amount) {
+        if (amount == 0) return "데이터 없음";
+        return String.format("%,d", amount);
     }
 
     private static String fmtRate(Double rate) {
         return rate == null ? "산출 불가" : String.format("%.2f%%", rate);
+    }
+
+    private static Double calcRate(long numerator, long denominator) {
+        return denominator == 0 ? null : numerator * 100.0 / denominator;
     }
 }

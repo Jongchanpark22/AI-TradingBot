@@ -37,24 +37,33 @@ public class ReportAsyncTask {
      */
     @Async("reportExecutor")
     public CompletableFuture<Void> generate(Long reportId, String corpCode, int businessYear) {
-        log.info("[비동기리포트] 생성 시작: reportId={}, corpCode={}, year={}", reportId, corpCode, businessYear);
+        log.info("[비동기리포트] ▶ 시작 — 스레드: {}, reportId={}, corpCode={}, year={}",
+                Thread.currentThread().getName(), reportId, corpCode, businessYear);
         try {
             // 1단계: DART 재무 수집 + 지표 계산
+            log.info("[비동기리포트] [1/3] DART 재무 수집 시작: reportId={}", reportId);
             Optional<CompanyFinancials> financialsOpt =
                     dartFinancialClient.fetchFinancials(corpCode, businessYear);
             if (financialsOpt.isEmpty()) {
+                log.warn("[비동기리포트] [1/3] DART 재무 데이터 없음 — FAILED 처리: reportId={}", reportId);
                 markFailed(reportId, "DART 재무 데이터 없음: corpCode=" + corpCode + ", year=" + businessYear);
                 return CompletableFuture.completedFuture(null);
             }
             CompanyFinancials financials = financialsOpt.get();
+            log.info("[비동기리포트] [1/3] DART 완료: 기업명={}, reportId={}", financials.getCorpName(), reportId);
 
             // 2단계: Gemini 서술 생성
+            log.info("[비동기리포트] [2/3] Gemini 호출 시작: reportId={}", reportId);
             String narrative = llmClient.generate(buildPrompt(financials));
             if (narrative == null || narrative.isBlank()) {
+                log.warn("[비동기리포트] [2/3] Gemini 응답 없음 (빈 문자열) — 폴백 메시지 사용: reportId={}", reportId);
                 narrative = "LLM 미응답 — gemini.api-key 및 모델명을 확인하세요.";
+            } else {
+                log.info("[비동기리포트] [2/3] Gemini 완료: 응답 {}자, reportId={}", narrative.length(), reportId);
             }
 
             // 3단계: SavedReport DONE 업데이트
+            log.info("[비동기리포트] [3/3] DB 상태 업데이트: reportId={}", reportId);
             String contentJson  = objectMapper.writeValueAsString(financials);
             String sourceMeta   = String.format("DART 사업보고서 %d년도 | 완료: %s",
                     businessYear, LocalDateTime.now());
@@ -68,10 +77,11 @@ public class ReportAsyncTask {
             report.setStatus(SavedReport.Status.DONE);
             savedReportRepository.save(report);
 
-            log.info("[비동기리포트] 생성 완료: reportId={}, corpCode={}", reportId, corpCode);
+            log.info("[비동기리포트] ✔ 완료: reportId={}, corpCode={}", reportId, corpCode);
 
         } catch (Exception e) {
-            log.error("[비동기리포트] 생성 실패: reportId={}, corpCode={}", reportId, corpCode, e);
+            log.error("[비동기리포트] ✘ 예외 발생: reportId={}, corpCode={}, 원인: {}",
+                    reportId, corpCode, e.getMessage(), e);
             markFailed(reportId, e.getMessage());
         }
         return CompletableFuture.completedFuture(null);
@@ -107,6 +117,9 @@ public class ReportAsyncTask {
             5. 동종업계 비교 금지(데이터 없음).
             6. 모든 판단은 반드시 구체적 숫자에 근거(예: "영업이익률이 13.1%로 전년보다 하락").
             7. 마지막에 "본 내용은 투자 권유가 아닌 정보 제공입니다" 명시.
+            8. 3개년 데이터가 제공되므로 반드시 3개년 추세를 분석할 것.
+               - 적자→흑자 전환, 급증, 급감 같은 변화는 구체적 수치와 함께 명시.
+               - 단순히 당기 숫자만 나열하지 말고 전기·전전기 대비 흐름을 서술할 것.
 
             [작성 원칙 — 전문성 + 쉬움]
             - 각 지표는 "수치 → 전년 대비 변화 → 그게 뜻하는 바"를 함께 서술.
@@ -119,11 +132,12 @@ public class ReportAsyncTask {
             - 이 기업의 재무 상태를 2~3문장으로 요약(핵심 숫자 포함).
 
             ## 매출
-            - 매출 규모와 전년 대비 증감(%), 추세가 의미하는 바.
+            - 3개년(전전기→전기→당기) 매출 흐름과 증감률. 방향성이 의미하는 바.
 
             ## 수익성
-            - 영업이익률·순이익률과 전년 대비 변화. 마진이 무엇을 뜻하는지 쉬운 설명.
-            - 매출은 늘었는데 마진이 줄었다면 그 의미(원가 압박 등)를 사실 범위에서.
+            - 영업이익·순이익의 3개년 변화. 마진이 무엇을 뜻하는지 쉬운 설명.
+            - 적자→흑자 전환이나 급격한 변화가 있으면 반드시 강조.
+            - 매출 증가에도 마진이 줄었다면 원가 압박 등 사실 범위에서 서술.
 
             ## 재무 건전성
             - 부채비율·자본구조. 이 수준이 부담이 큰지 안정적인지 맥락(단정 대신 사실 기반).
