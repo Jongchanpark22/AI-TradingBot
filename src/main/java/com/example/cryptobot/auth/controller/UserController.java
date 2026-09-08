@@ -1,6 +1,7 @@
 package com.example.cryptobot.auth.controller;
 
 import com.example.cryptobot.auth.dto.AuthResponse;
+import com.example.cryptobot.auth.dto.OnboardingRequest;
 import com.example.cryptobot.auth.dto.PasswordChangeRequest;
 import com.example.cryptobot.auth.entity.User;
 import com.example.cryptobot.auth.service.UserService;
@@ -48,6 +49,19 @@ public class UserController {
         }
 
         User updated = userService.updateNickname(userId, nickname.trim());
+        return ResponseEntity.ok(AuthResponse.UserInfo.from(updated));
+    }
+
+    /**
+     * 온보딩 완료.
+     * 관심 종목·테마를 등록하고 onboardedAt을 기록합니다.
+     * body 예: {"symbols":["KRW-BTC","005930"],"themes":["금리","반도체"]}
+     */
+    @PatchMapping("/onboarding")
+    public ResponseEntity<AuthResponse.UserInfo> onboard(
+            @AuthenticationPrincipal Long userId,
+            @RequestBody OnboardingRequest request) {
+        User updated = userService.onboard(userId, request);
         return ResponseEntity.ok(AuthResponse.UserInfo.from(updated));
     }
 
