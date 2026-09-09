@@ -17,6 +17,9 @@ public interface NewsItemRepository extends JpaRepository<NewsItem, Long> {
 
     List<NewsItem> findByPublishedAtGreaterThanEqualOrderByPublishedAtDesc(LocalDateTime from);
 
+    /** 홈 브리핑용 최신 뉴스 N건 */
+    List<NewsItem> findTop5ByOrderByPublishedAtDesc();
+
     List<NewsItem> findBySourceOrderByPublishedAtDesc(String source);
 
     // ─── 커서 페이지네이션 — symbols/themes 필터 포함 ────────────────────────
