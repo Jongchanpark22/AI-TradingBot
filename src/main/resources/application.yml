@@ -95,6 +95,13 @@ upbit:
     access-key: ${UPBIT_ACCESS_KEY}
     secret-key: ${UPBIT_SECRET_KEY}
 
+# 토스증권 Open API 설정 (지수 시세 조회)
+toss:
+  securities:
+    base-url: https://openapi.tossinvest.com
+    client-id: ${TOSS_CLIENT_ID:}
+    client-secret: ${TOSS_CLIENT_SECRET:}
+
 # 뉴스·공시 API 설정
 dart:
   api-key: ${DART_API_KEY:}             # DART Open API 키 (opendart.fss.or.kr)
