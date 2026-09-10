@@ -95,6 +95,10 @@ upbit:
     access-key: ${UPBIT_ACCESS_KEY}
     secret-key: ${UPBIT_SECRET_KEY}
 
+# Firebase Admin SDK (FCM 푸시 발송)
+firebase:
+  credentials-path: ${FIREBASE_CREDENTIALS_PATH:secret/firebase-serviceAccount.json}
+
 # 토스증권 Open API 설정 (지수 시세 조회)
 toss:
   securities:
