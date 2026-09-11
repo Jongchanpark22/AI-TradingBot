@@ -47,3 +47,5 @@ ai-service/venv/
 ai-service/model/*.json
 ai-service/model/*.ubj
 
+
+secret/

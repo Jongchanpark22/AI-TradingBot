@@ -2,7 +2,8 @@ package com.example.cryptobot.report;
 
 import com.example.cryptobot.auth.entity.User;
 import com.example.cryptobot.auth.repository.UserRepository;
-import com.example.cryptobot.common.exception.ReportLimitExceededException;
+import com.example.cryptobot.common.apiPayload.ErrorCode;
+import com.example.cryptobot.common.exception.BusinessException;
 import com.example.cryptobot.report.dto.ReportSubmitResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -63,7 +64,7 @@ public class AiReportService {
      * @param userId       요청 회원 ID
      * @param corpCode     DART 기업 고유번호 8자리
      * @param businessYear 사업연도
-     * @throws ReportLimitExceededException FREE 티어 월 한도 초과 시
+     * @throws BusinessException FREE 티어 월 한도 초과 시 (ErrorCode.REPORT_LIMIT_EXCEEDED)
      */
     public ReportSubmitResponse submitReport(Long userId, String corpCode, int businessYear) {
         log.info("[리포트] 요청 수신: userId={}, corpCode={}, year={}, 호출스레드={}",
@@ -135,7 +136,7 @@ public class AiReportService {
      * FREE 티어 회원의 월 리포트 카운트를 검사하고 1 증가시킵니다.
      * PREMIUM 티어는 무제한이므로 검사를 건너뜁니다.
      *
-     * @throws ReportLimitExceededException 한도 초과 시
+     * @throws BusinessException 한도 초과 시 (ErrorCode.REPORT_LIMIT_EXCEEDED)
      */
     private void checkAndIncrementReportCount(Long userId) {
         User user = userRepository.findById(userId)
@@ -157,8 +158,7 @@ public class AiReportService {
 
         if (user.getReportGenCount() >= reportLimit) {
             log.info("[리포트] FREE 한도 초과: userId={}, count={}/{}", userId, user.getReportGenCount(), reportLimit);
-            throw new ReportLimitExceededException(
-                    String.format("이번 달 리포트 생성 한도(%d회)를 초과했습니다. 다음 달에 다시 시도하거나 PREMIUM으로 업그레이드하세요.", reportLimit));
+            throw new BusinessException(ErrorCode.REPORT_LIMIT_EXCEEDED);
         }
 
         user.setReportGenCount(user.getReportGenCount() + 1);
