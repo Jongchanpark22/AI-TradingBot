@@ -91,11 +91,14 @@ public class SocialAuthService {
                 .build());
     }
 
-    /** 닉네임 우선순위: 요청값 → 제공자 닉네임 → 자동 생성 */
+    /**
+     * 닉네임 우선순위: 요청값 → 제공자 닉네임 → null.
+     * null 이면 UserInfo.nicknameNeeded=true 로 응답되어 프론트가 온보딩에서 입력 유도.
+     */
     private String resolveNickname(String reqNickname, String providerNickname) {
         if (reqNickname != null && !reqNickname.isBlank()) return reqNickname.trim();
         if (providerNickname != null && !providerNickname.isBlank()) return providerNickname.trim();
-        return "사용자" + System.currentTimeMillis() % 100000;
+        return null;
     }
 
     private AuthResponse issueTokens(User user) {

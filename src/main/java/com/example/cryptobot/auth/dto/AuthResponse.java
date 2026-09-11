@@ -15,7 +15,9 @@ public record AuthResponse(
             String email,
             String nickname,
             String tier,
-            boolean onboarded
+            boolean onboarded,
+            /** nickname 이 비어 있으면 true — 프론트에서 닉네임 입력 유도용 */
+            boolean nicknameNeeded
     ) {
         public static UserInfo from(User user) {
             return new UserInfo(
@@ -23,7 +25,8 @@ public record AuthResponse(
                     user.getEmail(),
                     user.getNickname(),
                     user.getTier().name(),
-                    user.getOnboardedAt() != null
+                    user.getOnboardedAt() != null,
+                    user.getNickname() == null || user.getNickname().isBlank()
             );
         }
     }
