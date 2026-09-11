@@ -11,4 +11,7 @@ public interface UserIndicatorSettingRepository extends JpaRepository<UserIndica
     List<UserIndicatorSetting> findByUserIdAndSymbolOrderByCreatedAtDesc(Long userId, String symbol);
 
     java.util.Optional<UserIndicatorSetting> findByIdAndUserId(Long id, Long userId);
+
+    /** FREE 티어 게이트용: 해당 회원의 전체 지표 개수 */
+    long countByUserId(Long userId);
 }

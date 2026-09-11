@@ -1,5 +1,9 @@
 package com.example.cryptobot.chart;
 
+import com.example.cryptobot.auth.entity.User;
+import com.example.cryptobot.auth.repository.UserRepository;
+import com.example.cryptobot.common.apiPayload.ErrorCode;
+import com.example.cryptobot.common.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -18,6 +22,7 @@ public class ChartAnnotationController {
 
     private final UserChartAnnotationRepository annotationRepository;
     private final UserIndicatorSettingRepository indicatorRepository;
+    private final UserRepository userRepository;
 
     // ─── 차트 주석 ────────────────────────────────────────────────────────────
 
@@ -60,7 +65,7 @@ public class ChartAnnotationController {
         annotationRepository.findByIdAndUserId(id, userId)
                 .ifPresentOrElse(
                         annotationRepository::delete,
-                        () -> { throw new IllegalArgumentException("주석을 찾을 수 없습니다: " + id); }
+                        () -> { throw new BusinessException(ErrorCode._NOT_FOUND, "주석을 찾을 수 없습니다: " + id); }
                 );
         return ResponseEntity.noContent().build();
     }
@@ -81,6 +86,10 @@ public class ChartAnnotationController {
 
     /**
      * 커스텀 지표 설정 추가.
+     *
+     * <p>FREE 티어: 전체 지표 1개까지 허용. 초과 시 403(PREMIUM_REQUIRED).
+     * PREMIUM 티어: 무제한.</p>
+     *
      * body 예: {"indicatorType":"RSI","paramsJson":"{\"period\":14}","enabled":true}
      */
     @PostMapping("/{symbol}/indicators/settings")
@@ -89,6 +98,17 @@ public class ChartAnnotationController {
             @AuthenticationPrincipal Long userId,
             @PathVariable String symbol,
             @RequestBody UserIndicatorSetting request) {
+
+        // FREE 티어 지표 수 게이트
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode._NOT_FOUND));
+        if (user.getTier() == User.Tier.FREE) {
+            long count = indicatorRepository.countByUserId(userId);
+            if (count >= 1) {
+                throw new BusinessException(ErrorCode.PREMIUM_REQUIRED);
+            }
+        }
+
         request.setUserId(userId);
         request.setSymbol(symbol);
         return ResponseEntity.ok(indicatorRepository.save(request));
@@ -106,7 +126,7 @@ public class ChartAnnotationController {
         indicatorRepository.findByIdAndUserId(id, userId)
                 .ifPresentOrElse(
                         indicatorRepository::delete,
-                        () -> { throw new IllegalArgumentException("지표 설정을 찾을 수 없습니다: " + id); }
+                        () -> { throw new BusinessException(ErrorCode._NOT_FOUND, "지표 설정을 찾을 수 없습니다: " + id); }
                 );
         return ResponseEntity.noContent().build();
     }
