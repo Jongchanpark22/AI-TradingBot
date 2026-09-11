@@ -1,5 +1,6 @@
 package com.example.cryptobot.account;
 
+import com.example.cryptobot.common.apiPayload.ErrorCode;
 import com.example.cryptobot.common.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -18,7 +19,7 @@ public class AccountService {
     public Account getPrimaryAccount() {
         return accountRepository.findAll().stream()
                 .findFirst()
-                .orElseThrow(() -> new BusinessException("ACCOUNT_NOT_FOUND", "기본 계정이 없습니다."));
+                .orElseThrow(() -> new BusinessException(ErrorCode.ACCOUNT_NOT_FOUND));
     }
 
     public Account createDefaultAccountIfNotExists() {

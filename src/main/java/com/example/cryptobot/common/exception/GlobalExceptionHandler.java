@@ -1,9 +1,8 @@
 package com.example.cryptobot.common.exception;
 
-import lombok.AllArgsConstructor;
-import lombok.Getter;
+import com.example.cryptobot.common.apiPayload.ApiResponse;
+import com.example.cryptobot.common.apiPayload.ErrorCode;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -12,113 +11,64 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.util.stream.Collectors;
 
+/**
+ * 전역 예외 핸들러.
+ *
+ * <p>모든 응답은 {@link ApiResponse} 봉투로 통일됩니다.
+ * 인증·인가 에러(401/403)는 필터 단계에서 처리되므로
+ * {@link com.example.cryptobot.auth.exception.AuthFailureHandler} 가 담당합니다.</p>
+ */
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    /** 도메인 비즈니스 규칙 위반 */
     @ExceptionHandler(BusinessException.class)
-    public ResponseEntity<ErrorResponse> handleBusinessException(BusinessException e) {
-        ErrorResponse response = ErrorResponse.builder()
-                .errorCode(e.getErrorCode())
-                .errorMessage(e.getErrorMessage())
-                .status(HttpStatus.BAD_REQUEST.value())
-                .build();
-        return ResponseEntity.badRequest().body(response);
-    }
-
-    /** FREE 티어 월 리포트 한도 초과 → 429 Too Many Requests */
-    @ExceptionHandler(ReportLimitExceededException.class)
-    public ResponseEntity<ErrorResponse> handleReportLimit(ReportLimitExceededException e) {
-        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
-                .body(ErrorResponse.builder()
-                        .errorCode("REPORT_LIMIT_EXCEEDED")
-                        .errorMessage(e.getMessage())
-                        .status(HttpStatus.TOO_MANY_REQUESTS.value())
-                        .build());
-    }
-
-    /** 이메일 중복 등 도메인 검증 실패 */
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<ErrorResponse> handleIllegalArgument(IllegalArgumentException e) {
-        String msg = e.getMessage();
-        // 이메일 중복은 409
-        if (msg != null && msg.contains("이미 사용 중인 이메일")) {
-            return ResponseEntity.status(HttpStatus.CONFLICT)
-                    .body(ErrorResponse.builder()
-                            .errorCode("EMAIL_DUPLICATE")
-                            .errorMessage(msg)
-                            .status(HttpStatus.CONFLICT.value())
-                            .build());
-        }
-        return ResponseEntity.badRequest()
-                .body(ErrorResponse.builder()
-                        .errorCode("INVALID_REQUEST")
-                        .errorMessage(msg)
-                        .status(HttpStatus.BAD_REQUEST.value())
-                        .build());
+    public ResponseEntity<ApiResponse<Void>> handleBusinessException(BusinessException e) {
+        ErrorCode errorCode = e.getErrorCode();
+        // 메시지가 ErrorCode 기본값과 다르면(오버라이드된 경우) 커스텀 메시지 사용
+        String message = e.getMessage() != null ? e.getMessage() : errorCode.getMessage();
+        log.warn("[BusinessException] code={}, message={}", errorCode.getCode(), message);
+        return ResponseEntity
+                .status(errorCode.getHttpStatus())
+                .body(ApiResponse.onFailure(errorCode, message));
     }
 
     /** @Valid 검증 실패 */
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ErrorResponse> handleValidation(MethodArgumentNotValidException e) {
+    public ResponseEntity<ApiResponse<Void>> handleValidation(MethodArgumentNotValidException e) {
         String message = e.getBindingResult().getFieldErrors().stream()
                 .map(FieldError::getDefaultMessage)
                 .collect(Collectors.joining(", "));
-        return ResponseEntity.badRequest()
-                .body(ErrorResponse.builder()
-                        .errorCode("VALIDATION_FAILED")
-                        .errorMessage(message)
-                        .status(HttpStatus.BAD_REQUEST.value())
-                        .build());
+        return ResponseEntity
+                .status(ErrorCode.VALIDATION_FAILED.getHttpStatus())
+                .body(ApiResponse.onFailure(ErrorCode.VALIDATION_FAILED, message));
     }
 
+    /** 잘못된 인자 (도메인 검증 실패 — 직접 메시지 포함) */
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ApiResponse<Void>> handleIllegalArgument(IllegalArgumentException e) {
+        String msg = e.getMessage();
+        log.warn("[IllegalArgumentException] {}", msg);
+        return ResponseEntity
+                .status(ErrorCode._BAD_REQUEST.getHttpStatus())
+                .body(ApiResponse.onFailure(ErrorCode._BAD_REQUEST, msg));
+    }
+
+    /** 리소스 미존재 */
+    @ExceptionHandler(jakarta.persistence.EntityNotFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleEntityNotFound(jakarta.persistence.EntityNotFoundException e) {
+        return ResponseEntity
+                .status(ErrorCode._NOT_FOUND.getHttpStatus())
+                .body(ApiResponse.onFailure(ErrorCode._NOT_FOUND, e.getMessage()));
+    }
+
+    /** 그 외 미처리 예외 — 스택트레이스는 로그에만 */
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ErrorResponse> handleGeneralException(Exception e) {
-        log.error("처리되지 않은 예외", e);
-        ErrorResponse response = ErrorResponse.builder()
-                .errorCode("INTERNAL_ERROR")
-                .errorMessage(e.getMessage())
-                .status(HttpStatus.INTERNAL_SERVER_ERROR.value())
-                .build();
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+    public ResponseEntity<ApiResponse<Void>> handleGeneral(Exception e) {
+        log.error("[UnhandledException] {}", e.getMessage(), e);
+        return ResponseEntity
+                .status(ErrorCode._INTERNAL_ERROR.getHttpStatus())
+                .body(ApiResponse.onFailure(ErrorCode._INTERNAL_ERROR));
     }
-
-    @Getter
-    @AllArgsConstructor
-    public static class ErrorResponse {
-        private String errorCode;
-        private String errorMessage;
-        private int status;
-
-        public static ErrorResponseBuilder builder() {
-            return new ErrorResponseBuilder();
-        }
-
-        public static class ErrorResponseBuilder {
-            private String errorCode;
-            private String errorMessage;
-            private int status;
-
-            public ErrorResponseBuilder errorCode(String errorCode) {
-                this.errorCode = errorCode;
-                return this;
-            }
-
-            public ErrorResponseBuilder errorMessage(String errorMessage) {
-                this.errorMessage = errorMessage;
-                return this;
-            }
-
-            public ErrorResponseBuilder status(int status) {
-                this.status = status;
-                return this;
-            }
-
-            public ErrorResponse build() {
-                return new ErrorResponse(errorCode, errorMessage, status);
-            }
-        }
-    }
-
 }
-

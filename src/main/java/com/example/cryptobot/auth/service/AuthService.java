@@ -10,6 +10,8 @@ import com.example.cryptobot.auth.jwt.JwtProvider;
 import com.example.cryptobot.auth.repository.AuthProviderRepository;
 import com.example.cryptobot.auth.repository.RefreshTokenRepository;
 import com.example.cryptobot.auth.repository.UserRepository;
+import com.example.cryptobot.common.apiPayload.ErrorCode;
+import com.example.cryptobot.common.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -44,12 +46,12 @@ public class AuthService {
     /**
      * 이메일 회원가입.
      *
-     * @throws IllegalArgumentException 이메일 중복
+     * @throws BusinessException 이메일 중복 시 EMAIL_DUPLICATE(409)
      */
     @Transactional
     public AuthResponse signup(SignupRequest request) {
         if (userRepository.existsByEmail(request.email())) {
-            throw new IllegalArgumentException("이미 사용 중인 이메일입니다.");
+            throw new BusinessException(ErrorCode.EMAIL_DUPLICATE);
         }
 
         User user = userRepository.save(User.builder()
@@ -71,16 +73,16 @@ public class AuthService {
     /**
      * 이메일 로그인.
      *
-     * @throws IllegalArgumentException 이메일 없음 또는 비밀번호 불일치
+     * @throws BusinessException 이메일 없음 또는 비밀번호 불일치 시 INVALID_CREDENTIALS(401)
      */
     @Transactional
     public AuthResponse login(LoginRequest request) {
         User user = userRepository.findByEmail(request.email())
                 .filter(u -> u.getStatus() == User.Status.ACTIVE)
-                .orElseThrow(() -> new IllegalArgumentException("이메일 또는 비밀번호가 올바르지 않습니다."));
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_CREDENTIALS));
 
         if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
-            throw new IllegalArgumentException("이메일 또는 비밀번호가 올바르지 않습니다.");
+            throw new BusinessException(ErrorCode.INVALID_CREDENTIALS);
         }
 
         log.info("[Auth] 로그인 성공: userId={}", user.getId());
@@ -91,16 +93,16 @@ public class AuthService {
      * 리프레시 토큰으로 액세스 토큰 재발급(rotation).
      * 이전 리프레시 토큰은 revoke 하고 새 리프레시 토큰을 발급합니다.
      *
-     * @throws IllegalArgumentException 토큰 없음·만료·revoke됨
+     * @throws BusinessException 토큰 없음·만료·revoke됨 시 EXPIRED_TOKEN(401)
      */
     @Transactional
     public AuthResponse refresh(String refreshTokenValue) {
         String hash = sha256(refreshTokenValue);
         RefreshToken stored = refreshTokenRepository.findByTokenHash(hash)
-                .orElseThrow(() -> new IllegalArgumentException("유효하지 않은 리프레시 토큰입니다."));
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_TOKEN));
 
         if (stored.isRevoked() || stored.getExpiresAt().isBefore(LocalDateTime.now())) {
-            throw new IllegalArgumentException("만료되었거나 무효화된 리프레시 토큰입니다.");
+            throw new BusinessException(ErrorCode.EXPIRED_TOKEN);
         }
 
         // rotation: 기존 토큰 revoke
@@ -109,7 +111,7 @@ public class AuthService {
 
         User user = userRepository.findById(stored.getUserId())
                 .filter(u -> u.getStatus() == User.Status.ACTIVE)
-                .orElseThrow(() -> new IllegalArgumentException("회원을 찾을 수 없습니다."));
+                .orElseThrow(() -> new BusinessException(ErrorCode.WITHDRAWN_USER));
 
         log.info("[Auth] 토큰 갱신: userId={}", user.getId());
         return issueTokens(user);

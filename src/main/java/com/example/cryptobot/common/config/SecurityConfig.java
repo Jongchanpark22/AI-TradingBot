@@ -1,5 +1,6 @@
 package com.example.cryptobot.common.config;
 
+import com.example.cryptobot.auth.exception.AuthFailureHandler;
 import com.example.cryptobot.auth.jwt.JwtAuthenticationFilter;
 import com.example.cryptobot.auth.jwt.JwtProvider;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +33,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class SecurityConfig {
 
     private final JwtProvider jwtProvider;
+    private final AuthFailureHandler authFailureHandler;
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -39,6 +41,12 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .exceptionHandling(ex -> ex
+                        // 미인증 → 401 ApiResponse 봉투
+                        .authenticationEntryPoint(authFailureHandler)
+                        // 권한 부족 → 403 ApiResponse 봉투
+                        .accessDeniedHandler(authFailureHandler)
+                )
                 .authorizeHttpRequests(authz -> authz
                         // 관리자 전용
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")

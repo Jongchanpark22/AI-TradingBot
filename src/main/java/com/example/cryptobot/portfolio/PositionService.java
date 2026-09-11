@@ -1,5 +1,6 @@
 package com.example.cryptobot.portfolio;
 
+import com.example.cryptobot.common.apiPayload.ErrorCode;
 import com.example.cryptobot.common.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -48,7 +49,7 @@ public class PositionService {
 
     public void updatePosition(Long positionId, BigDecimal quantity, BigDecimal avgPrice, BigDecimal currentPrice) {
         Position position = positionRepository.findById(positionId)
-                .orElseThrow(() -> new BusinessException("POSITION_NOT_FOUND", "포지션을 찾을 수 없습니다."));
+                .orElseThrow(() -> new BusinessException(ErrorCode.POSITION_NOT_FOUND));
 
         BigDecimal safeQuantity = quantity != null ? quantity : BigDecimal.ZERO;
         BigDecimal safeAvgPrice = avgPrice != null ? avgPrice : BigDecimal.ZERO;
